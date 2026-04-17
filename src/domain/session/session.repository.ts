@@ -13,5 +13,6 @@ export interface ISessionRepository {
     content: string,
     toolName?: string,
   ): Promise<Message>;
+  switchToChannel(sessionId: string, channelId: string): Promise<Session>;
   delete(id: string): Promise<void>;
 }

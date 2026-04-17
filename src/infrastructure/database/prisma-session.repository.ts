@@ -100,6 +100,15 @@ export class PrismaSessionRepository implements ISessionRepository {
     return toMessage(createdMessage);
   }
 
+  async switchToChannel(sessionId: string, channelId: string): Promise<Session> {
+    const updatedSession = await this.prisma.session.update({
+      where: { id: sessionId },
+      data: { channelId, lastActiveAt: new Date() },
+      include: includeMessages,
+    });
+    return toSession(updatedSession);
+  }
+
   async delete(id: string): Promise<void> {
     await this.prisma.session.delete({ where: { id } });
   }
