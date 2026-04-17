@@ -16,16 +16,16 @@ type PrismaKnowledgeEntry = {
   updatedAt: Date;
 };
 
-function toEntry(k: PrismaKnowledgeEntry): KnowledgeEntry {
+function toKnowledgeEntry(prismaEntry: PrismaKnowledgeEntry): KnowledgeEntry {
   return {
-    id: k.id,
-    source: k.source as KnowledgeSource,
-    rawContent: k.rawContent,
-    sanitizedContent: k.sanitizedContent,
-    tags: JSON.parse(k.tags) as string[],
-    addedByUserId: k.addedByUserId,
-    createdAt: k.createdAt,
-    updatedAt: k.updatedAt,
+    id: prismaEntry.id,
+    source: prismaEntry.source as KnowledgeSource,
+    rawContent: prismaEntry.rawContent,
+    sanitizedContent: prismaEntry.sanitizedContent,
+    tags: JSON.parse(prismaEntry.tags) as string[],
+    addedByUserId: prismaEntry.addedByUserId,
+    createdAt: prismaEntry.createdAt,
+    updatedAt: prismaEntry.updatedAt,
   };
 }
 
@@ -33,7 +33,7 @@ export class PrismaKnowledgeRepository implements IKnowledgeRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
   async create(props: CreateKnowledgeEntryProps): Promise<KnowledgeEntry> {
-    const k = await this.prisma.knowledgeEntry.create({
+    const createdEntry = await this.prisma.knowledgeEntry.create({
       data: {
         source: props.source,
         rawContent: props.rawContent,
@@ -42,23 +42,23 @@ export class PrismaKnowledgeRepository implements IKnowledgeRepository {
         addedByUserId: props.addedByUserId ?? null,
       },
     });
-    return toEntry(k);
+    return toKnowledgeEntry(createdEntry);
   }
 
   async searchByTags(keywords: string[]): Promise<KnowledgeEntry[]> {
-    const lower = keywords.map((k) => k.toLowerCase());
-    const all = await this.prisma.knowledgeEntry.findMany();
-    return all
+    const lowerKeywords = keywords.map((keyword) => keyword.toLowerCase());
+    const allEntries = await this.prisma.knowledgeEntry.findMany();
+    return allEntries
       .filter((entry) => {
         const tags = JSON.parse(entry.tags) as string[];
-        return tags.some((tag) => lower.includes(tag.toLowerCase()));
+        return tags.some((tag) => lowerKeywords.includes(tag.toLowerCase()));
       })
-      .map(toEntry);
+      .map(toKnowledgeEntry);
   }
 
   async findAll(): Promise<KnowledgeEntry[]> {
-    const rows = await this.prisma.knowledgeEntry.findMany({ orderBy: { createdAt: 'desc' } });
-    return rows.map(toEntry);
+    const entries = await this.prisma.knowledgeEntry.findMany({ orderBy: { createdAt: 'desc' } });
+    return entries.map(toKnowledgeEntry);
   }
 
   async delete(id: string): Promise<void> {

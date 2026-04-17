@@ -22,26 +22,26 @@ type PrismaSessionWithMessages = {
   messages: PrismaMessage[];
 };
 
-function toMessage(m: PrismaMessage): Message {
+function toMessage(prismaMessage: PrismaMessage): Message {
   return {
-    id: m.id,
-    sessionId: m.sessionId,
-    role: m.role as MessageRole,
-    content: m.content,
-    toolName: m.toolName ?? undefined,
-    createdAt: m.createdAt,
+    id: prismaMessage.id,
+    sessionId: prismaMessage.sessionId,
+    role: prismaMessage.role as MessageRole,
+    content: prismaMessage.content,
+    toolName: prismaMessage.toolName ?? undefined,
+    createdAt: prismaMessage.createdAt,
   };
 }
 
-function toSession(s: PrismaSessionWithMessages): Session {
+function toSession(prismaSession: PrismaSessionWithMessages): Session {
   return new Session({
-    id: s.id,
-    userId: s.userId,
-    channelId: s.channelId,
-    title: s.title,
-    createdAt: s.createdAt,
-    lastActiveAt: s.lastActiveAt,
-    messages: s.messages.map(toMessage),
+    id: prismaSession.id,
+    userId: prismaSession.userId,
+    channelId: prismaSession.channelId,
+    title: prismaSession.title,
+    createdAt: prismaSession.createdAt,
+    lastActiveAt: prismaSession.lastActiveAt,
+    messages: prismaSession.messages.map(toMessage),
   });
 }
 
@@ -51,34 +51,34 @@ export class PrismaSessionRepository implements ISessionRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
   async findById(id: string): Promise<Session | null> {
-    const s = await this.prisma.session.findUnique({ where: { id }, include: includeMessages });
-    return s ? toSession(s) : null;
+    const sessionRow = await this.prisma.session.findUnique({ where: { id }, include: includeMessages });
+    return sessionRow ? toSession(sessionRow) : null;
   }
 
   async findLatestByUserAndChannel(userId: string, channelId: string): Promise<Session | null> {
-    const s = await this.prisma.session.findFirst({
+    const sessionRow = await this.prisma.session.findFirst({
       where: { userId, channelId },
       orderBy: { lastActiveAt: 'desc' },
       include: includeMessages,
     });
-    return s ? toSession(s) : null;
+    return sessionRow ? toSession(sessionRow) : null;
   }
 
   async findAllByUser(userId: string): Promise<Session[]> {
-    const rows = await this.prisma.session.findMany({
+    const sessionRows = await this.prisma.session.findMany({
       where: { userId },
       orderBy: { lastActiveAt: 'desc' },
       include: includeMessages,
     });
-    return rows.map(toSession);
+    return sessionRows.map(toSession);
   }
 
   async create(userId: string, channelId: string): Promise<Session> {
-    const s = await this.prisma.session.create({
+    const createdSession = await this.prisma.session.create({
       data: { userId, channelId },
       include: includeMessages,
     });
-    return toSession(s);
+    return toSession(createdSession);
   }
 
   async update(session: Session): Promise<void> {
@@ -94,10 +94,10 @@ export class PrismaSessionRepository implements ISessionRepository {
     content: string,
     toolName?: string,
   ): Promise<Message> {
-    const m = await this.prisma.message.create({
+    const createdMessage = await this.prisma.message.create({
       data: { sessionId, role, content, toolName: toolName ?? null },
     });
-    return toMessage(m);
+    return toMessage(createdMessage);
   }
 
   async delete(id: string): Promise<void> {
