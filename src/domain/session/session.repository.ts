@@ -1,0 +1,17 @@
+import { Message, MessageRole } from './message.entity';
+import { Session } from './session.entity';
+
+export interface ISessionRepository {
+  findById(id: string): Promise<Session | null>;
+  findLatestByUserAndChannel(userId: string, channelId: string): Promise<Session | null>;
+  findAllByUser(userId: string): Promise<Session[]>;
+  create(userId: string, channelId: string): Promise<Session>;
+  update(session: Session): Promise<void>;
+  appendMessage(
+    sessionId: string,
+    role: MessageRole,
+    content: string,
+    toolName?: string,
+  ): Promise<Message>;
+  delete(id: string): Promise<void>;
+}
