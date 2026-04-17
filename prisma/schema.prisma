@@ -1,0 +1,61 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String          @id @default(cuid())
+  discordUserId  String          @unique
+  createdAt      DateTime        @default(now())
+  sessions       Session[]
+  rateLimitEntry RateLimitEntry?
+}
+
+model Session {
+  id           String    @id @default(cuid())
+  userId       String
+  channelId    String
+  title        String?
+  createdAt    DateTime  @default(now())
+  lastActiveAt DateTime  @default(now())
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages     Message[]
+
+  @@index([userId, channelId])
+  @@index([userId, lastActiveAt])
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  sessionId String
+  role      String
+  content   String
+  toolName  String?
+  createdAt DateTime @default(now())
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+}
+
+model RateLimitEntry {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  requestTimestamps String
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model KnowledgeEntry {
+  id               String   @id @default(cuid())
+  source           String
+  rawContent       String
+  sanitizedContent String
+  tags             String
+  addedByUserId    String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
