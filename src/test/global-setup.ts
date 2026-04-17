@@ -1,3 +1,11 @@
+import { execSync } from 'child_process';
+import path from 'path';
+
+const TEST_DB_PATH = path.resolve('./prisma/test.db');
+
 export default async function globalSetup() {
-  // Phase 3: configure in-memory SQLite and run prisma migrate deploy
+  execSync('npx prisma migrate deploy', {
+    env: { ...process.env, DATABASE_URL: `file:${TEST_DB_PATH}` },
+    stdio: 'inherit',
+  });
 }
