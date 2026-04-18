@@ -41,6 +41,23 @@ const HELP_TEXT = `**Comandos disponíveis:**
 \`/session delete session_id\` — Deletar uma sessão
 \`/help\` — Mostrar esta mensagem`;
 
+const MAX_MESSAGE_LENGTH = 2000;
+
+function splitIntoChunks(text: string, maxLength: number): string[] {
+  const chunks: string[] = [];
+  let remaining = text;
+
+  while (remaining.length > maxLength) {
+    let splitAt = remaining.lastIndexOf('\n', maxLength);
+    if (splitAt <= 0) splitAt = maxLength;
+    chunks.push(remaining.slice(0, splitAt));
+    remaining = remaining.slice(splitAt).trimStart();
+  }
+
+  if (remaining.length > 0) chunks.push(remaining);
+  return chunks;
+}
+
 export class CommandHandler {
   constructor(
     private readonly useCases: UseCases,
@@ -81,7 +98,7 @@ export class CommandHandler {
       );
     } catch (error) {
       this.logger.error({ error, command: interaction.commandName }, 'Command error');
-      await interaction.editReply('Ocorreu um erro inesperado. Tente novamente.');
+      await interaction.editReply('Ocorreu um erro inesperado. Tente novamente.'); // always short
     }
   }
 
@@ -100,7 +117,7 @@ export class CommandHandler {
       sessionInactivityMinutes: this.commandConfig.sessionInactivityMinutes,
     });
 
-    await interaction.editReply(output.warningMessage ?? output.answer);
+    await this.sendReply(interaction, output.warningMessage ?? output.answer);
   }
 
   private async handleEquipment(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -119,7 +136,7 @@ export class CommandHandler {
       sessionInactivityMinutes: this.commandConfig.sessionInactivityMinutes,
     });
 
-    await interaction.editReply(output.warningMessage ?? output.answer);
+    await this.sendReply(interaction, output.warningMessage ?? output.answer);
   }
 
   private async handleFarming(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -136,7 +153,7 @@ export class CommandHandler {
       sessionInactivityMinutes: this.commandConfig.sessionInactivityMinutes,
     });
 
-    await interaction.editReply(output.warningMessage ?? output.answer);
+    await this.sendReply(interaction, output.warningMessage ?? output.answer);
   }
 
   private async handleDamage(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -153,7 +170,7 @@ export class CommandHandler {
       sessionInactivityMinutes: this.commandConfig.sessionInactivityMinutes,
     });
 
-    await interaction.editReply(output.warningMessage ?? output.answer);
+    await this.sendReply(interaction, output.warningMessage ?? output.answer);
   }
 
   private async handleAddKnowledge(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -165,7 +182,8 @@ export class CommandHandler {
       addedByUserId: discordUserId,
     });
 
-    await interaction.editReply(
+    await this.sendReply(
+      interaction,
       `✅ Conhecimento adicionado com ${entry.tags.length} tags: ${entry.tags.join(', ')}.`,
     );
   }
@@ -187,7 +205,7 @@ export class CommandHandler {
         (s) =>
           `• \`${s.id}\` — ${s.title ?? 'Sem título'} — ${this.formatRelativeTime(s.lastActiveAt)}`,
       );
-      await interaction.editReply(lines.join('\n'));
+      await this.sendReply(interaction, lines.join('\n'));
       return;
     }
 
@@ -198,7 +216,7 @@ export class CommandHandler {
         discordUserId,
         channelId,
       });
-      await interaction.editReply(`✅ Sessão "${session.title ?? sessionId}" ativada.`);
+      await this.sendReply(interaction, `✅ Sessão "${session.title ?? sessionId}" ativada.`);
       return;
     }
 
@@ -206,16 +224,32 @@ export class CommandHandler {
       const sessionId = interaction.options.getString('session_id', true);
       try {
         await this.useCases.deleteSession.execute({ sessionId, discordUserId });
-        await interaction.editReply('🗑️ Sessão deletada com sucesso.');
+        await this.sendReply(interaction, '🗑️ Sessão deletada com sucesso.');
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Erro ao deletar sessão.';
-        await interaction.editReply(message);
+        await this.sendReply(interaction, message);
       }
     }
   }
 
   private async handleHelp(interaction: ChatInputCommandInteraction): Promise<void> {
-    await interaction.editReply(HELP_TEXT);
+    await this.sendReply(interaction, HELP_TEXT);
+  }
+
+  private async sendReply(
+    interaction: ChatInputCommandInteraction,
+    content: string,
+  ): Promise<void> {
+    if (content.length <= MAX_MESSAGE_LENGTH) {
+      await interaction.editReply(content);
+      return;
+    }
+
+    const chunks = splitIntoChunks(content, MAX_MESSAGE_LENGTH);
+    await interaction.editReply(chunks[0]);
+    for (let i = 1; i < chunks.length; i++) {
+      await interaction.followUp(chunks[i]);
+    }
   }
 
   private formatRelativeTime(date: Date): string {

@@ -29,6 +29,7 @@ class FakeDiscordInteraction {
   channelId = 'channel-test';
 
   private _reply = '';
+  private _followUps: string[] = [];
   private _deferred = false;
   private _opts: Record<string, string | null>;
   private _subcommand: string | null;
@@ -66,8 +67,16 @@ class FakeDiscordInteraction {
     this._reply = content;
   }
 
+  async followUp(content: string): Promise<void> {
+    this._followUps.push(content);
+  }
+
   getReply(): string {
     return this._reply;
+  }
+
+  getFollowUps(): string[] {
+    return this._followUps;
   }
 
   isDeferred(): boolean {
@@ -326,6 +335,23 @@ describe('CommandHandler', () => {
       expect(interaction.getReply()).toContain('/ask');
       expect(interaction.getReply()).toContain('/equipment');
       expect(interaction.getReply()).toContain('/session');
+    });
+  });
+
+  describe('long message chunking', () => {
+    it('sends first 2000 chars via editReply and remainder via followUp', async () => {
+      const longAnswer = 'A'.repeat(1500) + '\n' + 'B'.repeat(1500);
+      const llm = new FakeLlmService().queueResponse(longAnswer);
+      const handler = makeCommandHandler(llm);
+      const interaction = new FakeDiscordInteraction('ask', { question: 'Explique tudo' });
+
+      await handler.handle(asInteraction(interaction));
+
+      expect(interaction.getReply().length).toBeLessThanOrEqual(2000);
+      expect(interaction.getFollowUps().length).toBeGreaterThan(0);
+      const combined = interaction.getReply() + interaction.getFollowUps().join('');
+      expect(combined).toContain('A'.repeat(100));
+      expect(combined).toContain('B'.repeat(100));
     });
   });
 
