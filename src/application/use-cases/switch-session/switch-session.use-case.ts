@@ -1,6 +1,9 @@
 import { Session } from '../../../domain/session/session.entity';
 import { ISessionRepository } from '../../../domain/session/session.repository';
 import { IUserRepository } from '../../../domain/user/user.repository';
+import { createLogger } from '../../../bootstrap/logger';
+
+const logger = createLogger('switch-session');
 
 export interface SwitchSessionInput {
   sessionId: string;
@@ -17,6 +20,7 @@ export class SwitchSessionUseCase {
   async execute(input: SwitchSessionInput): Promise<Session> {
     const { sessionId, discordUserId, channelId } = input;
 
+    logger.info({ discordUserId, sessionId }, '[SWITCH-SESSION][USE-CASE] Switching session');
     const user = await this.userRepository.findOrCreate(discordUserId);
 
     const session = await this.sessionRepository.findById(sessionId);
@@ -28,6 +32,8 @@ export class SwitchSessionUseCase {
       throw new Error('This session does not belong to you');
     }
 
-    return this.sessionRepository.switchToChannel(sessionId, channelId);
+    const switched = await this.sessionRepository.switchToChannel(sessionId, channelId);
+    logger.info({ discordUserId, sessionId }, '[SWITCH-SESSION][USE-CASE] Session switched');
+    return switched;
   }
 }

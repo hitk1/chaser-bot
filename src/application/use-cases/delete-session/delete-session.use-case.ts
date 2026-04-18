@@ -1,5 +1,8 @@
 import { ISessionRepository } from '../../../domain/session/session.repository';
 import { IUserRepository } from '../../../domain/user/user.repository';
+import { createLogger } from '../../../bootstrap/logger';
+
+const logger = createLogger('delete-session');
 
 export interface DeleteSessionInput {
   sessionId: string;
@@ -15,6 +18,7 @@ export class DeleteSessionUseCase {
   async execute(input: DeleteSessionInput): Promise<void> {
     const { sessionId, discordUserId } = input;
 
+    logger.info({ discordUserId, sessionId }, '[DELETE-SESSION][USE-CASE] Deleting session');
     const user = await this.userRepository.findOrCreate(discordUserId);
 
     const session = await this.sessionRepository.findById(sessionId);
@@ -27,5 +31,6 @@ export class DeleteSessionUseCase {
     }
 
     await this.sessionRepository.delete(sessionId);
+    logger.info({ discordUserId, sessionId }, '[DELETE-SESSION][USE-CASE] Session deleted');
   }
 }

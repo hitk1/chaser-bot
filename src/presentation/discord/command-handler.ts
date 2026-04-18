@@ -62,9 +62,23 @@ export class CommandHandler {
     const handler = handlers[interaction.commandName];
     if (!handler) return;
 
+    this.logger.info(
+      {
+        userId: interaction.user.id,
+        username: interaction.user.username,
+        channelId: interaction.channelId,
+        command: interaction.commandName,
+      },
+      '[EVENT IN] User interaction received',
+    );
+
     try {
       await interaction.deferReply();
       await handler();
+      this.logger.info(
+        { userId: interaction.user.id, command: interaction.commandName },
+        '[EVENT OUT] Response sent to user',
+      );
     } catch (error) {
       this.logger.error({ error, command: interaction.commandName }, 'Command error');
       await interaction.editReply('Ocorreu um erro inesperado. Tente novamente.');

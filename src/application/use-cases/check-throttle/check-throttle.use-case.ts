@@ -1,5 +1,8 @@
 import { ThrottlePolicy, ThrottleResult } from '../../../domain/throttle/throttle.policy';
 import { IThrottleRepository } from '../../../domain/throttle/throttle.repository';
+import { createLogger } from '../../../bootstrap/logger';
+
+const logger = createLogger('check-throttle');
 
 export interface ThrottleConfig {
   maxRequests: number;
@@ -18,6 +21,8 @@ export class CheckThrottleUseCase {
 
   async execute(input: CheckThrottleInput): Promise<ThrottleResult> {
     const { userId, username, config } = input;
+
+    logger.info({ userId, username }, '[CHECK-THROTTLE][USE-CASE] Evaluating rate limit');
 
     const existingEntry = await this.throttleRepository.findByUserId(userId);
     const currentTimestamps = existingEntry?.requestTimestamps ?? [];
@@ -43,6 +48,7 @@ export class CheckThrottleUseCase {
       });
     }
 
+    logger.info({ userId, allowed: result.allowed }, '[CHECK-THROTTLE][USE-CASE] Rate limit evaluated');
     return result;
   }
 }

@@ -2,6 +2,9 @@ import { PrismaClient } from '@prisma/client';
 import { Message, MessageRole } from '../../domain/session/message.entity';
 import { Session } from '../../domain/session/session.entity';
 import { ISessionRepository } from '../../domain/session/session.repository';
+import { createLogger } from '../../bootstrap/logger';
+
+const logger = createLogger('session-repository');
 
 type PrismaMessage = {
   id: string;
@@ -51,37 +54,49 @@ export class PrismaSessionRepository implements ISessionRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
   async findById(id: string): Promise<Session | null> {
+    logger.info({ id }, '[SESSION][REPOSITORY] findById');
     const sessionRow = await this.prisma.session.findUnique({ where: { id }, include: includeMessages });
+    logger.info({ id, found: !!sessionRow }, '[SESSION][REPOSITORY] findById result');
     return sessionRow ? toSession(sessionRow) : null;
   }
 
   async findLatestByUserAndChannel(userId: string, channelId: string): Promise<Session | null> {
+    logger.info({ userId, channelId }, '[SESSION][REPOSITORY] findLatestByUserAndChannel');
     const sessionRow = await this.prisma.session.findFirst({
       where: { userId, channelId },
       orderBy: { lastActiveAt: 'desc' },
       include: includeMessages,
     });
+    logger.info(
+      { userId, channelId, found: !!sessionRow, sessionId: sessionRow?.id },
+      '[SESSION][REPOSITORY] findLatestByUserAndChannel result',
+    );
     return sessionRow ? toSession(sessionRow) : null;
   }
 
   async findAllByUser(userId: string): Promise<Session[]> {
+    logger.info({ userId }, '[SESSION][REPOSITORY] findAllByUser');
     const sessionRows = await this.prisma.session.findMany({
       where: { userId },
       orderBy: { lastActiveAt: 'desc' },
       include: includeMessages,
     });
+    logger.info({ userId, count: sessionRows.length }, '[SESSION][REPOSITORY] findAllByUser result');
     return sessionRows.map(toSession);
   }
 
   async create(userId: string, channelId: string): Promise<Session> {
+    logger.info({ userId, channelId }, '[SESSION][REPOSITORY] create');
     const createdSession = await this.prisma.session.create({
       data: { userId, channelId },
       include: includeMessages,
     });
+    logger.info({ userId, channelId, sessionId: createdSession.id }, '[SESSION][REPOSITORY] create result');
     return toSession(createdSession);
   }
 
   async update(session: Session): Promise<void> {
+    logger.info({ sessionId: session.id }, '[SESSION][REPOSITORY] update');
     await this.prisma.session.update({
       where: { id: session.id },
       data: { title: session.title, lastActiveAt: session.lastActiveAt },
@@ -94,6 +109,7 @@ export class PrismaSessionRepository implements ISessionRepository {
     content: string,
     toolName?: string,
   ): Promise<Message> {
+    logger.info({ sessionId, role }, '[SESSION][REPOSITORY] appendMessage');
     const createdMessage = await this.prisma.message.create({
       data: { sessionId, role, content, toolName: toolName ?? null },
     });
@@ -101,6 +117,7 @@ export class PrismaSessionRepository implements ISessionRepository {
   }
 
   async switchToChannel(sessionId: string, channelId: string): Promise<Session> {
+    logger.info({ sessionId, channelId }, '[SESSION][REPOSITORY] switchToChannel');
     const updatedSession = await this.prisma.session.update({
       where: { id: sessionId },
       data: { channelId, lastActiveAt: new Date() },
@@ -110,6 +127,7 @@ export class PrismaSessionRepository implements ISessionRepository {
   }
 
   async delete(id: string): Promise<void> {
+    logger.info({ id }, '[SESSION][REPOSITORY] delete');
     await this.prisma.session.delete({ where: { id } });
   }
 }

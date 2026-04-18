@@ -3,6 +3,9 @@ import { KnowledgeEntry } from '../../../domain/knowledge/knowledge-entry.entity
 import { IKnowledgeRepository } from '../../../domain/knowledge/knowledge.repository';
 import { KNOWLEDGE_SANITIZATION_PROMPT } from '../../constants/game-prompts';
 import { AddKnowledgeInput, AddKnowledgeOutput } from './add-knowledge.dto';
+import { createLogger } from '../../../bootstrap/logger';
+
+const logger = createLogger('add-knowledge');
 
 interface SanitizationResult {
   sanitizedContent: string;
@@ -34,6 +37,11 @@ export class AddKnowledgeUseCase {
   async execute(input: AddKnowledgeInput): Promise<AddKnowledgeOutput> {
     const { rawContent, addedByUserId } = input;
 
+    logger.info(
+      { addedByUserId, rawContentLength: rawContent.length },
+      '[ADD-KNOWLEDGE][USE-CASE] Adding knowledge entry',
+    );
+
     const sanitizationPrompt = KNOWLEDGE_SANITIZATION_PROMPT.replace('{rawContent}', rawContent);
     const sanitizationMessage: LlmMessage = { role: 'user', content: sanitizationPrompt };
 
@@ -48,6 +56,10 @@ export class AddKnowledgeUseCase {
       addedByUserId,
     });
 
+    logger.info(
+      { entryId: knowledgeEntry.id, tagCount: knowledgeEntry.tags.length },
+      '[ADD-KNOWLEDGE][USE-CASE] Knowledge entry saved',
+    );
     return knowledgeEntry;
   }
 }
