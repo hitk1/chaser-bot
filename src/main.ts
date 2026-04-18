@@ -1,3 +1,4 @@
+import 'dotenv/config'
 import { REST, Routes } from 'discord.js';
 import { config } from './bootstrap/env';
 import { createLogger } from './bootstrap/logger';
@@ -112,29 +113,36 @@ async function bootstrap() {
       createLogger('command-handler'),
     );
 
+    // 8. Build command registrar — registers slash commands to a guild on demand
+    const commandBodies = [
+      askCommand,
+      equipmentCommand,
+      farmingCommand,
+      damageCommand,
+      addKnowledgeCommand,
+      sessionCommand,
+      helpCommand,
+    ].map((c) => c.toJSON());
+
+    const rest = new REST().setToken(config.DISCORD_BOT_TOKEN);
+    const registrar = {
+      registerForGuild: async (guildId: string) => {
+        await rest.put(
+          Routes.applicationGuildCommands(config.DISCORD_CLIENT_ID, guildId),
+          { body: commandBodies },
+        );
+        logger.info({ guildId, count: commandBodies.length }, 'Commands registered for guild');
+      },
+    };
+
     const client = createDiscordClient();
-    const eventHandler = new EventHandler(client, commandHandler, createLogger('event-handler'));
+    const eventHandler = new EventHandler(
+      client,
+      commandHandler,
+      createLogger('event-handler'),
+      registrar,
+    );
     eventHandler.register();
-
-    // 8. Auto-register slash commands if configured
-    if (config.AUTO_REGISTER_COMMANDS) {
-      const body = [
-        askCommand,
-        equipmentCommand,
-        farmingCommand,
-        damageCommand,
-        addKnowledgeCommand,
-        sessionCommand,
-        helpCommand,
-      ].map((c) => c.toJSON());
-
-      const rest = new REST().setToken(config.DISCORD_BOT_TOKEN);
-      await rest.put(
-        Routes.applicationGuildCommands(config.DISCORD_CLIENT_ID, config.DISCORD_GUILD_ID),
-        { body },
-      );
-      logger.info({ count: body.length }, 'Slash commands registered');
-    }
 
     // 9. Login to Discord
     await client.login(config.DISCORD_BOT_TOKEN);

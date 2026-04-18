@@ -3,7 +3,7 @@ import { z } from 'zod';
 const envSchema = z.object({
   DISCORD_BOT_TOKEN: z.string().min(1),
   DISCORD_CLIENT_ID: z.string().min(1),
-  DISCORD_GUILD_ID: z.string().min(1),
+  DISCORD_GUILD_ID: z.string().optional(),
 
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_MODEL: z.string().default('gpt-4o-mini'),
@@ -26,10 +26,6 @@ const envSchema = z.object({
   LOG_LEVEL: z
     .enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent'])
     .default('info'),
-  AUTO_REGISTER_COMMANDS: z
-    .string()
-    .transform((v) => v === 'true')
-    .default('true'),
 });
 
 export type Config = z.infer<typeof envSchema>;
