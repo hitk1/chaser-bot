@@ -34,6 +34,8 @@ import { damageCommand } from './presentation/discord/commands/damage.command';
 import { addKnowledgeCommand } from './presentation/discord/commands/add-knowledge.command';
 import { sessionCommand } from './presentation/discord/commands/session.command';
 import { helpCommand } from './presentation/discord/commands/help.command';
+import { wikiCommand } from './presentation/discord/commands/wiki.command';
+import { webCommand } from './presentation/discord/commands/web.command';
 
 const logger = createLogger('main');
 
@@ -51,21 +53,48 @@ async function bootstrap() {
     const throttleRepository = new PrismaThrottleRepository(prisma);
     const knowledgeRepository = new PrismaKnowledgeRepository(prisma);
 
-    // 3. Build function registry
+    // 3. Build function registries
+    const searchService = config.SEARCH_API_KEY ? new BraveSearchService(config.SEARCH_API_KEY) : null;
+
+    // General registry: all tools — used by /ask, /equipment, /farming, /damage, /add-knowledge
     const registry = new FunctionRegistry();
     registry.register('grandchase_wiki', createGrandChaseWikiFunction());
     registry.register('knowledge_lookup', createKnowledgeLookupFunction(knowledgeRepository));
-    if (config.SEARCH_API_KEY) {
-      const searchService = new BraveSearchService(config.SEARCH_API_KEY);
+    if (searchService) {
       registry.register('web_search', createWebSearchFunction(searchService));
-      logger.info('Web search function registered');
+      logger.info('Web search function registered in general registry');
     }
 
-    // 4. Create LLM service
+    // Wiki registry: grandchase_wiki + knowledge_lookup only (no web_search)
+    const wikiRegistry = new FunctionRegistry();
+    wikiRegistry.register('grandchase_wiki', createGrandChaseWikiFunction());
+    wikiRegistry.register('knowledge_lookup', createKnowledgeLookupFunction(knowledgeRepository));
+
+    // Web registry: web_search + knowledge_lookup only (no grandchase_wiki)
+    const webRegistry = new FunctionRegistry();
+    webRegistry.register('knowledge_lookup', createKnowledgeLookupFunction(knowledgeRepository));
+    if (searchService) {
+      webRegistry.register('web_search', createWebSearchFunction(searchService));
+      logger.info('Web search function registered in web registry');
+    }
+
+    // 4. Create LLM services (shared OpenAI HTTP client, different registries)
     const openai = createOpenAiClient(config);
     const llmService = new OpenAiLlmService(
       openai,
       registry,
+      config.OPENAI_MODEL,
+      config.OPENAI_MAX_TOKENS,
+    );
+    const wikiLlmService = new OpenAiLlmService(
+      openai,
+      wikiRegistry,
+      config.OPENAI_MODEL,
+      config.OPENAI_MAX_TOKENS,
+    );
+    const webLlmService = new OpenAiLlmService(
+      openai,
+      webRegistry,
       config.OPENAI_MODEL,
       config.OPENAI_MAX_TOKENS,
     );
@@ -78,6 +107,18 @@ async function bootstrap() {
       resolveActiveSession,
       checkThrottle,
       llmService,
+    );
+    const searchWiki = new AskQuestionUseCase(
+      sessionRepository,
+      resolveActiveSession,
+      checkThrottle,
+      wikiLlmService,
+    );
+    const searchWeb = new AskQuestionUseCase(
+      sessionRepository,
+      resolveActiveSession,
+      checkThrottle,
+      webLlmService,
     );
     const getEquipmentAdvice = new GetEquipmentAdviceUseCase(askQuestion);
     const getFarmingStrategy = new GetFarmingStrategyUseCase(askQuestion);
@@ -101,6 +142,8 @@ async function bootstrap() {
     const commandHandler = new CommandHandler(
       {
         askQuestion,
+        searchWiki,
+        searchWeb,
         getEquipmentAdvice,
         getFarmingStrategy,
         getDamageTips,
@@ -116,6 +159,8 @@ async function bootstrap() {
     // 8. Build command registrar — registers slash commands to a guild on demand
     const commandBodies = [
       askCommand,
+      wikiCommand,
+      webCommand,
       equipmentCommand,
       farmingCommand,
       damageCommand,

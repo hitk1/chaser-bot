@@ -24,6 +24,20 @@ export function makeAskQuestionUseCase(llmService: FakeLlmService) {
   return new AskQuestionUseCase(sessionRepository, resolveActiveSession, checkThrottle, llmService);
 }
 
+export function makeSearchWikiUseCase(llmService: FakeLlmService) {
+  const { userRepository, sessionRepository, throttleRepository } = makeRepositories();
+  const checkThrottle = new CheckThrottleUseCase(throttleRepository);
+  const resolveActiveSession = new ResolveActiveSessionUseCase(userRepository, sessionRepository);
+  return new AskQuestionUseCase(sessionRepository, resolveActiveSession, checkThrottle, llmService);
+}
+
+export function makeSearchWebUseCase(llmService: FakeLlmService) {
+  const { userRepository, sessionRepository, throttleRepository } = makeRepositories();
+  const checkThrottle = new CheckThrottleUseCase(throttleRepository);
+  const resolveActiveSession = new ResolveActiveSessionUseCase(userRepository, sessionRepository);
+  return new AskQuestionUseCase(sessionRepository, resolveActiveSession, checkThrottle, llmService);
+}
+
 export const defaultThrottle = {
   maxRequests: 5,
   windowSeconds: 60,

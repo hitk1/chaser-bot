@@ -1,6 +1,6 @@
 import { ChatInputCommandInteraction } from 'discord.js';
 import { Logger } from 'pino';
-import { BASE_GRANDCHASE_SYSTEM_PROMPT } from '../../application/constants/game-prompts';
+import { BASE_GRANDCHASE_SYSTEM_PROMPT, WIKI_SYSTEM_PROMPT, WEB_SEARCH_SYSTEM_PROMPT } from '../../application/constants/game-prompts';
 import {
   ThrottleConfig,
 } from '../../application/use-cases/check-throttle/check-throttle.use-case';
@@ -20,6 +20,8 @@ export interface CommandConfig {
 
 export interface UseCases {
   askQuestion: AskQuestionUseCase;
+  searchWiki: AskQuestionUseCase;
+  searchWeb: AskQuestionUseCase;
   getEquipmentAdvice: GetEquipmentAdviceUseCase;
   getFarmingStrategy: GetFarmingStrategyUseCase;
   getDamageTips: GetDamageTipsUseCase;
@@ -32,6 +34,8 @@ export interface UseCases {
 const HELP_TEXT = `**Comandos disponíveis:**
 
 \`/ask question\` — Faça uma pergunta geral sobre GrandChase
+\`/wiki question\` — Pesquisa informações diretamente na wiki do GrandChase
+\`/web question\` — Busca informações atualizadas da comunidade (Reddit, fóruns)
 \`/equipment character slot\` — Melhor carta para um slot de equipamento
 \`/farming target\` — Melhor lugar para farmar um item
 \`/damage character\` — Dicas para maximizar o dano de um personagem
@@ -68,6 +72,8 @@ export class CommandHandler {
   async handle(interaction: ChatInputCommandInteraction): Promise<void> {
     const handlers: Record<string, () => Promise<void>> = {
       ask: () => this.handleAsk(interaction),
+      wiki: () => this.handleWiki(interaction),
+      web: () => this.handleWeb(interaction),
       equipment: () => this.handleEquipment(interaction),
       farming: () => this.handleFarming(interaction),
       damage: () => this.handleDamage(interaction),
@@ -113,6 +119,42 @@ export class CommandHandler {
       username,
       question,
       systemPrompt: BASE_GRANDCHASE_SYSTEM_PROMPT,
+      throttle: this.commandConfig.throttle,
+      sessionInactivityMinutes: this.commandConfig.sessionInactivityMinutes,
+    });
+
+    await this.sendReply(interaction, output.warningMessage ?? output.answer);
+  }
+
+  private async handleWiki(interaction: ChatInputCommandInteraction): Promise<void> {
+    const question = interaction.options.getString('question', true);
+    const { id: discordUserId, username } = interaction.user;
+    const { channelId } = interaction;
+
+    const output = await this.useCases.searchWiki.execute({
+      discordUserId,
+      channelId,
+      username,
+      question,
+      systemPrompt: WIKI_SYSTEM_PROMPT,
+      throttle: this.commandConfig.throttle,
+      sessionInactivityMinutes: this.commandConfig.sessionInactivityMinutes,
+    });
+
+    await this.sendReply(interaction, output.warningMessage ?? output.answer);
+  }
+
+  private async handleWeb(interaction: ChatInputCommandInteraction): Promise<void> {
+    const question = interaction.options.getString('question', true);
+    const { id: discordUserId, username } = interaction.user;
+    const { channelId } = interaction;
+
+    const output = await this.useCases.searchWeb.execute({
+      discordUserId,
+      channelId,
+      username,
+      question,
+      systemPrompt: WEB_SEARCH_SYSTEM_PROMPT,
       throttle: this.commandConfig.throttle,
       sessionInactivityMinutes: this.commandConfig.sessionInactivityMinutes,
     });

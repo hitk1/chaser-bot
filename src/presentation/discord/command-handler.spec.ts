@@ -90,7 +90,11 @@ class FakeDiscordInteraction {
 
 const nullLogger = pino({ level: 'silent' });
 
-function makeCommandHandler(llmService: FakeLlmService): CommandHandler {
+function makeCommandHandler(
+  llmService: FakeLlmService,
+  wikiLlmService?: FakeLlmService,
+  webLlmService?: FakeLlmService,
+): CommandHandler {
   const repos = makeRepositories();
   const checkThrottle = new CheckThrottleUseCase(repos.throttleRepository);
   const resolveActiveSession = new ResolveActiveSessionUseCase(
@@ -102,6 +106,18 @@ function makeCommandHandler(llmService: FakeLlmService): CommandHandler {
     resolveActiveSession,
     checkThrottle,
     llmService,
+  );
+  const searchWiki = new AskQuestionUseCase(
+    repos.sessionRepository,
+    resolveActiveSession,
+    checkThrottle,
+    wikiLlmService ?? llmService,
+  );
+  const searchWeb = new AskQuestionUseCase(
+    repos.sessionRepository,
+    resolveActiveSession,
+    checkThrottle,
+    webLlmService ?? llmService,
   );
   const getEquipmentAdvice = new GetEquipmentAdviceUseCase(askQuestion);
   const getFarmingStrategy = new GetFarmingStrategyUseCase(askQuestion);
@@ -119,6 +135,8 @@ function makeCommandHandler(llmService: FakeLlmService): CommandHandler {
   return new CommandHandler(
     {
       askQuestion,
+      searchWiki,
+      searchWeb,
       getEquipmentAdvice,
       getFarmingStrategy,
       getDamageTips,
@@ -177,6 +195,90 @@ describe('CommandHandler', () => {
       await handler.handle(asInteraction(throttled));
 
       expect(throttled.getReply()).toContain('Tester');
+    });
+  });
+
+  describe('/wiki', () => {
+    it('defers first, then puts wiki LLM answer in editReply', async () => {
+      const wikiLlm = new FakeLlmService().queueResponse('Elesis é uma guerreira da classe Knight.');
+      const handler = makeCommandHandler(new FakeLlmService(), wikiLlm);
+      const interaction = new FakeDiscordInteraction('wiki', { question: 'Quem é a Elesis?' });
+
+      await handler.handle(asInteraction(interaction));
+
+      expect(interaction.isDeferred()).toBe(true);
+      expect(interaction.getReply()).toBe('Elesis é uma guerreira da classe Knight.');
+    });
+
+    it('returns throttle warning when user is rate-limited on /wiki', async () => {
+      const wikiLlm = new FakeLlmService();
+      for (let i = 0; i < defaultThrottle.maxRequests; i++) {
+        wikiLlm.queueResponse(`Resposta wiki ${i + 1}`);
+      }
+      const handler = makeCommandHandler(new FakeLlmService(), wikiLlm);
+
+      for (let i = 0; i < defaultThrottle.maxRequests; i++) {
+        const req = new FakeDiscordInteraction('wiki', { question: `Pergunta ${i + 1}` });
+        await handler.handle(asInteraction(req));
+      }
+
+      const throttled = new FakeDiscordInteraction('wiki', { question: 'Mais uma' });
+      await handler.handle(asInteraction(throttled));
+
+      expect(throttled.getReply()).toContain('Tester');
+    });
+
+    it('forwards WIKI_SYSTEM_PROMPT as the system message', async () => {
+      const wikiLlm = new FakeLlmService().queueResponse('Info da wiki');
+      const handler = makeCommandHandler(new FakeLlmService(), wikiLlm);
+      const interaction = new FakeDiscordInteraction('wiki', { question: 'Quem é a Lire?' });
+
+      await handler.handle(asInteraction(interaction));
+
+      const systemMsg = wikiLlm.lastMessages.find((m) => m.role === 'system');
+      expect(systemMsg?.content).toContain('grandchase_wiki');
+    });
+  });
+
+  describe('/web', () => {
+    it('defers first, then puts web LLM answer in editReply', async () => {
+      const webLlm = new FakeLlmService().queueResponse('Resultados encontrados no Reddit.');
+      const handler = makeCommandHandler(new FakeLlmService(), undefined, webLlm);
+      const interaction = new FakeDiscordInteraction('web', { question: 'Melhor build de Arme?' });
+
+      await handler.handle(asInteraction(interaction));
+
+      expect(interaction.isDeferred()).toBe(true);
+      expect(interaction.getReply()).toBe('Resultados encontrados no Reddit.');
+    });
+
+    it('returns throttle warning when user is rate-limited on /web', async () => {
+      const webLlm = new FakeLlmService();
+      for (let i = 0; i < defaultThrottle.maxRequests; i++) {
+        webLlm.queueResponse(`Resposta web ${i + 1}`);
+      }
+      const handler = makeCommandHandler(new FakeLlmService(), undefined, webLlm);
+
+      for (let i = 0; i < defaultThrottle.maxRequests; i++) {
+        const req = new FakeDiscordInteraction('web', { question: `Pergunta ${i + 1}` });
+        await handler.handle(asInteraction(req));
+      }
+
+      const throttled = new FakeDiscordInteraction('web', { question: 'Mais uma' });
+      await handler.handle(asInteraction(throttled));
+
+      expect(throttled.getReply()).toContain('Tester');
+    });
+
+    it('forwards WEB_SEARCH_SYSTEM_PROMPT as the system message', async () => {
+      const webLlm = new FakeLlmService().queueResponse('Resultados da web');
+      const handler = makeCommandHandler(new FakeLlmService(), undefined, webLlm);
+      const interaction = new FakeDiscordInteraction('web', { question: 'Meta atual?' });
+
+      await handler.handle(asInteraction(interaction));
+
+      const systemMsg = webLlm.lastMessages.find((m) => m.role === 'system');
+      expect(systemMsg?.content).toContain('web_search');
     });
   });
 
@@ -333,6 +435,8 @@ describe('CommandHandler', () => {
 
       expect(interaction.isDeferred()).toBe(true);
       expect(interaction.getReply()).toContain('/ask');
+      expect(interaction.getReply()).toContain('/wiki');
+      expect(interaction.getReply()).toContain('/web');
       expect(interaction.getReply()).toContain('/equipment');
       expect(interaction.getReply()).toContain('/session');
     });
