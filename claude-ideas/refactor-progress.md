@@ -59,4 +59,22 @@ Pass-through de `forceNewSession` e `existingSessionId` para `resolveActiveSessi
 
 ---
 
-## Próximo: Step 4 — Use Case: SearchWeb + Links Relacionados
+---
+
+## Step 4 — Use Case: SearchWeb + Links Relacionados ✅ (2026-04-22)
+
+### 4.1 — `src/application/use-cases/search-web/search-web.use-case.ts`
+- Adicionado `forceNewSession: true` na chamada de `askQuestion.execute()` — cada `/ask` cria uma sessão nova
+- Após receber o output, se `results.length > 0` e sem `warningMessage`, faz append da seção:
+  ```
+  ## Links Relacionados
+  [1] [Título](url)
+  [2] [Título](url)
+  ```
+- `SearchWikiUseCase` não foi tocado — `/wiki` mantém comportamento de sessão atual
+
+**Resultado:** `npx tsc --noEmit` sem erros. `npm test` — 22 suites, 141 testes passando.
+
+---
+
+## Próximo: Step 5 — Use Case: HandleReply (NOVO)

@@ -67,7 +67,14 @@ export class SearchWebUseCase {
     }
 
     const systemPrompt = buildWebSearchSystemPrompt(question, results);
-    const output = await this.askQuestion.execute({ ...input, systemPrompt });
+    const output = await this.askQuestion.execute({ ...input, systemPrompt, forceNewSession: true });
+
+    if (results.length > 0 && !output.warningMessage) {
+      const links = results
+        .map((r, i) => `[${i + 1}] [${r.title}](${r.url})`)
+        .join('\n');
+      output.answer = `${output.answer}\n\n## Links Relacionados\n${links}`;
+    }
 
     this.logger.info(
       { discordUserId, sessionId: output.sessionId, throttled: !!output.warningMessage },
