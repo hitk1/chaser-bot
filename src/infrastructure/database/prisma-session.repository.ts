@@ -12,6 +12,7 @@ type PrismaMessage = {
   role: string;
   content: string;
   toolName: string | null;
+  discordMessageId: string | null;
   createdAt: Date;
 };
 
@@ -32,6 +33,7 @@ function toMessage(prismaMessage: PrismaMessage): Message {
     role: prismaMessage.role as MessageRole,
     content: prismaMessage.content,
     toolName: prismaMessage.toolName ?? undefined,
+    discordMessageId: prismaMessage.discordMessageId ?? undefined,
     createdAt: prismaMessage.createdAt,
   };
 }
@@ -74,6 +76,19 @@ export class PrismaSessionRepository implements ISessionRepository {
     return sessionRow ? toSession(sessionRow) : null;
   }
 
+  async findByDiscordMessageId(discordMessageId: string): Promise<Session | null> {
+    logger.info({ discordMessageId }, '[SESSION][REPOSITORY] findByDiscordMessageId');
+    const messageRow = await this.prisma.message.findUnique({
+      where: { discordMessageId },
+      include: { session: { include: includeMessages } },
+    });
+    logger.info(
+      { discordMessageId, found: !!messageRow, sessionId: messageRow?.sessionId },
+      '[SESSION][REPOSITORY] findByDiscordMessageId result',
+    );
+    return messageRow ? toSession(messageRow.session) : null;
+  }
+
   async findAllByUser(userId: string): Promise<Session[]> {
     logger.info({ userId }, '[SESSION][REPOSITORY] findAllByUser');
     const sessionRows = await this.prisma.session.findMany({
@@ -108,12 +123,30 @@ export class PrismaSessionRepository implements ISessionRepository {
     role: MessageRole,
     content: string,
     toolName?: string,
+    discordMessageId?: string,
   ): Promise<Message> {
     logger.info({ sessionId, role }, '[SESSION][REPOSITORY] appendMessage');
     const createdMessage = await this.prisma.message.create({
-      data: { sessionId, role, content, toolName: toolName ?? null },
+      data: { sessionId, role, content, toolName: toolName ?? null, discordMessageId: discordMessageId ?? null },
     });
     return toMessage(createdMessage);
+  }
+
+  async linkDiscordMessageToSession(sessionId: string, discordMessageId: string): Promise<void> {
+    logger.info({ sessionId, discordMessageId }, '[SESSION][REPOSITORY] linkDiscordMessageToSession');
+    const latestAssistant = await this.prisma.message.findFirst({
+      where: { sessionId, role: 'assistant', discordMessageId: null },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!latestAssistant) {
+      logger.warn({ sessionId }, '[SESSION][REPOSITORY] linkDiscordMessageToSession: no unlinked assistant message found');
+      return;
+    }
+    await this.prisma.message.update({
+      where: { id: latestAssistant.id },
+      data: { discordMessageId },
+    });
+    logger.info({ sessionId, messageId: latestAssistant.id, discordMessageId }, '[SESSION][REPOSITORY] linkDiscordMessageToSession result');
   }
 
   async switchToChannel(sessionId: string, channelId: string): Promise<Session> {
