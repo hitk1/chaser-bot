@@ -11,6 +11,7 @@ import { ResolveActiveSessionUseCase } from '../application/use-cases/resolve-ac
 import { AskQuestionUseCase } from '../application/use-cases/ask-question/ask-question.use-case';
 import { SearchWikiUseCase } from '../application/use-cases/search-wiki/search-wiki.use-case';
 import { SearchWebUseCase } from '../application/use-cases/search-web/search-web.use-case';
+import { HandleReplyUseCase } from '../application/use-cases/handle-reply/handle-reply.use-case';
 import { IWebSearchService } from '../application/ports/web-search.port';
 import pino from 'pino';
 
@@ -42,6 +43,12 @@ export function makeSearchWebUseCase(llmService: FakeLlmService, webSearch?: Fak
   const webSearchService: IWebSearchService | null = webSearch === undefined ? new FakeWebSearchService() : webSearch;
   const askQuestion = makeAskQuestionUseCase(llmService);
   return { useCase: new SearchWebUseCase(webSearchService, askQuestion, noopLogger), webSearch: webSearchService };
+}
+
+export function makeHandleReplyUseCase(llmService: FakeLlmService) {
+  const { sessionRepository } = makeRepositories();
+  const askQuestion = makeAskQuestionUseCase(llmService);
+  return { useCase: new HandleReplyUseCase(sessionRepository, askQuestion, noopLogger), sessionRepository };
 }
 
 export const defaultThrottle = {

@@ -77,4 +77,31 @@ Pass-through de `forceNewSession` e `existingSessionId` para `resolveActiveSessi
 
 ---
 
-## Próximo: Step 5 — Use Case: HandleReply (NOVO)
+---
+
+## Step 5 — Use Case: HandleReply (NOVO) ✅ (2026-04-22)
+
+### Arquivos criados
+- `src/application/use-cases/handle-reply/handle-reply.dto.ts`
+- `src/application/use-cases/handle-reply/handle-reply.use-case.ts`
+- `src/application/use-cases/handle-reply/handle-reply.use-case.spec.ts`
+
+### Lógica implementada
+1. `sessionRepository.findByDiscordMessageId(repliedToMessageId)`
+2. Se não encontrado → retorna `{ answer: 'Não encontrei a conversa original...', sessionId: '' }`
+3. Se encontrado → `askQuestion.execute({ ..., existingSessionId: session.id, systemPrompt: BASE_GRANDCHASE_SYSTEM_PROMPT })`
+
+### Factory adicionada em `src/test/use-case-factory.ts`
+`makeHandleReplyUseCase(llmService)` — retorna `{ useCase, sessionRepository }` para testes.
+
+### Testes (4 novos)
+- `discordMessageId` sem match → mensagem "Não encontrei a conversa original"
+- `discordMessageId` com match → continua na sessão correta (`sessionId` preservado)
+- Histórico da conversa é enviado ao LLM no follow-up
+- Throttle se aplica a replies da mesma forma que a comandos diretos
+
+**Resultado:** 23 suites, 145 testes passando.
+
+---
+
+## Próximo: Step 6 — Presentation: CommandHandler
