@@ -1,5 +1,6 @@
 import { ChatInputCommandInteraction } from 'discord.js';
 import { clearDatabase } from '../../test/db-helpers';
+import { prisma } from '../../test/prisma';
 import { FakeLlmService } from '../../test/fakes/fake-llm.service';
 import { FakeWikiSearchService } from '../../test/fakes/fake-wiki-search.service';
 import { FakeWebSearchService } from '../../test/fakes/fake-web-search.service';
@@ -13,18 +14,12 @@ import { ResolveActiveSessionUseCase } from '../../application/use-cases/resolve
 import { AskQuestionUseCase } from '../../application/use-cases/ask-question/ask-question.use-case';
 import { SearchWikiUseCase } from '../../application/use-cases/search-wiki/search-wiki.use-case';
 import { SearchWebUseCase } from '../../application/use-cases/search-web/search-web.use-case';
-import { GetEquipmentAdviceUseCase } from '../../application/use-cases/get-equipment-advice/get-equipment-advice.use-case';
-import { GetFarmingStrategyUseCase } from '../../application/use-cases/get-farming-strategy/get-farming-strategy.use-case';
-import { GetDamageTipsUseCase } from '../../application/use-cases/get-damage-tips/get-damage-tips.use-case';
-import { AddKnowledgeUseCase } from '../../application/use-cases/add-knowledge/add-knowledge.use-case';
-import { ListSessionsUseCase } from '../../application/use-cases/list-sessions/list-sessions.use-case';
-import { SwitchSessionUseCase } from '../../application/use-cases/switch-session/switch-session.use-case';
-import { DeleteSessionUseCase } from '../../application/use-cases/delete-session/delete-session.use-case';
+import { HandleReplyUseCase } from '../../application/use-cases/handle-reply/handle-reply.use-case';
 import { CommandHandler, CommandConfig } from './command-handler';
 import pino from 'pino';
 
 // ---------------------------------------------------------------------------
-// FakeDiscordInteraction — real interface, no jest.fn()
+// FakeDiscordInteraction — editReply returns { id } to satisfy Discord.js type
 // ---------------------------------------------------------------------------
 
 class FakeDiscordInteraction {
@@ -67,8 +62,9 @@ class FakeDiscordInteraction {
     this._deferred = true;
   }
 
-  async editReply(content: string): Promise<void> {
+  async editReply(content: string): Promise<{ id: string }> {
     this._reply = content;
+    return { id: 'fake-discord-msg-id' };
   }
 
   async followUp(content: string): Promise<void> {
@@ -111,19 +107,17 @@ function makeCommandHandler(
     checkThrottle,
     llmService,
   );
-  const searchWiki = new SearchWikiUseCase(wikiSearch ?? new FakeWikiSearchService(), askQuestion, nullLogger);
+  const searchWiki = new SearchWikiUseCase(
+    wikiSearch ?? new FakeWikiSearchService(),
+    askQuestion,
+    nullLogger,
+  );
   const searchWeb = new SearchWebUseCase(
     webSearch === undefined ? new FakeWebSearchService() : webSearch,
     askQuestion,
     nullLogger,
   );
-  const getEquipmentAdvice = new GetEquipmentAdviceUseCase(askQuestion);
-  const getFarmingStrategy = new GetFarmingStrategyUseCase(askQuestion);
-  const getDamageTips = new GetDamageTipsUseCase(askQuestion);
-  const addKnowledge = new AddKnowledgeUseCase(repos.knowledgeRepository, llmService);
-  const listSessions = new ListSessionsUseCase(repos.userRepository, repos.sessionRepository);
-  const switchSession = new SwitchSessionUseCase(repos.userRepository, repos.sessionRepository);
-  const deleteSession = new DeleteSessionUseCase(repos.userRepository, repos.sessionRepository);
+  const handleReply = new HandleReplyUseCase(repos.sessionRepository, askQuestion, nullLogger);
 
   const commandConfig: CommandConfig = {
     throttle: defaultThrottle,
@@ -131,18 +125,7 @@ function makeCommandHandler(
   };
 
   return new CommandHandler(
-    {
-      askQuestion,
-      searchWiki,
-      searchWeb,
-      getEquipmentAdvice,
-      getFarmingStrategy,
-      getDamageTips,
-      addKnowledge,
-      listSessions,
-      switchSession,
-      deleteSession,
-    },
+    { searchWiki, searchWeb, handleReply, sessionRepository: repos.sessionRepository },
     commandConfig,
     nullLogger,
   );
@@ -161,38 +144,65 @@ describe('CommandHandler', () => {
     await clearDatabase();
   });
 
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
   describe('/ask', () => {
     it('defers first, then puts LLM answer in editReply', async () => {
-      const llm = new FakeLlmService().queueResponse('Resposta sobre GrandChase');
+      const llm = new FakeLlmService().queueResponse('Resultados encontrados no Reddit.');
       const handler = makeCommandHandler(llm);
-      const interaction = new FakeDiscordInteraction('ask', { question: 'Qual o melhor mago?' });
+      const interaction = new FakeDiscordInteraction('ask', { question: 'Melhor build de Arme?' });
 
       await handler.handle(asInteraction(interaction));
 
       expect(interaction.isDeferred()).toBe(true);
-      expect(interaction.getReply()).toBe('Resposta sobre GrandChase');
+      expect(interaction.getReply()).toBe('Resultados encontrados no Reddit.');
     });
 
     it('returns throttle warning when user is rate-limited', async () => {
       const llm = new FakeLlmService();
-      // Queue enough responses to exhaust the throttle limit (5) + warning response
       for (let i = 0; i < defaultThrottle.maxRequests; i++) {
         llm.queueResponse(`Resposta ${i + 1}`);
       }
-
       const handler = makeCommandHandler(llm);
 
-      // Exhaust the throttle
       for (let i = 0; i < defaultThrottle.maxRequests; i++) {
         const req = new FakeDiscordInteraction('ask', { question: `Pergunta ${i + 1}` });
         await handler.handle(asInteraction(req));
       }
 
-      // This request should be throttled
       const throttled = new FakeDiscordInteraction('ask', { question: 'Pergunta extra' });
       await handler.handle(asInteraction(throttled));
 
       expect(throttled.getReply()).toContain('Tester');
+    });
+
+    it('injects web-search-results section into the system message', async () => {
+      const llm = new FakeLlmService().queueResponse('Resultados da web');
+      const handler = makeCommandHandler(llm);
+      const interaction = new FakeDiscordInteraction('ask', { question: 'Meta atual?' });
+
+      await handler.handle(asInteraction(interaction));
+
+      const systemMsg = llm.lastMessages.find((m) => m.role === 'system');
+      expect(systemMsg?.content).toContain('<web-search-results>');
+    });
+
+    it('appends Links Relacionados section when search returns results', async () => {
+      const webSearch = new FakeWebSearchService().setResults([
+        { title: 'Guia Arme Reddit', snippet: 'Dicas de build', url: 'https://reddit.com/r/Grandchase/1' },
+        { title: 'Arme Wiki', snippet: 'Informações da wiki', url: 'https://grandchase.fandom.com/arme' },
+      ]);
+      const llm = new FakeLlmService().queueResponse('Resposta sobre Arme.');
+      const handler = makeCommandHandler(llm, undefined, webSearch);
+      const interaction = new FakeDiscordInteraction('ask', { question: 'Build Arme?' });
+
+      await handler.handle(asInteraction(interaction));
+
+      expect(interaction.getReply()).toContain('## Links Relacionados');
+      expect(interaction.getReply()).toContain('https://reddit.com/r/Grandchase/1');
+      expect(interaction.getReply()).toContain('https://grandchase.fandom.com/arme');
     });
   });
 
@@ -235,208 +245,6 @@ describe('CommandHandler', () => {
 
       const systemMsg = llm.lastMessages.find((m) => m.role === 'system');
       expect(systemMsg?.content).toContain('<wiki-results>');
-    });
-  });
-
-  describe('/web', () => {
-    it('defers first, then puts web LLM answer in editReply', async () => {
-      const llm = new FakeLlmService().queueResponse('Resultados encontrados no Reddit.');
-      const handler = makeCommandHandler(llm);
-      const interaction = new FakeDiscordInteraction('web', { question: 'Melhor build de Arme?' });
-
-      await handler.handle(asInteraction(interaction));
-
-      expect(interaction.isDeferred()).toBe(true);
-      expect(interaction.getReply()).toBe('Resultados encontrados no Reddit.');
-    });
-
-    it('returns throttle warning when user is rate-limited on /web', async () => {
-      const llm = new FakeLlmService();
-      for (let i = 0; i < defaultThrottle.maxRequests; i++) {
-        llm.queueResponse(`Resposta web ${i + 1}`);
-      }
-      const handler = makeCommandHandler(llm);
-
-      for (let i = 0; i < defaultThrottle.maxRequests; i++) {
-        const req = new FakeDiscordInteraction('web', { question: `Pergunta ${i + 1}` });
-        await handler.handle(asInteraction(req));
-      }
-
-      const throttled = new FakeDiscordInteraction('web', { question: 'Mais uma' });
-      await handler.handle(asInteraction(throttled));
-
-      expect(throttled.getReply()).toContain('Tester');
-    });
-
-    it('injects web-search-results section into the system message', async () => {
-      const llm = new FakeLlmService().queueResponse('Resultados da web');
-      const handler = makeCommandHandler(llm);
-      const interaction = new FakeDiscordInteraction('web', { question: 'Meta atual?' });
-
-      await handler.handle(asInteraction(interaction));
-
-      const systemMsg = llm.lastMessages.find((m) => m.role === 'system');
-      expect(systemMsg?.content).toContain('<web-search-results>');
-    });
-  });
-
-  describe('/equipment', () => {
-    it('returns answer from use case', async () => {
-      const llm = new FakeLlmService().queueResponse('Use carta X no slot Y');
-      const handler = makeCommandHandler(llm);
-      const interaction = new FakeDiscordInteraction('equipment', {
-        character: 'Elesis',
-        slot: 'weapon',
-      });
-
-      await handler.handle(asInteraction(interaction));
-
-      expect(interaction.isDeferred()).toBe(true);
-      expect(interaction.getReply()).toBe('Use carta X no slot Y');
-    });
-  });
-
-  describe('/farming', () => {
-    it('returns answer from use case', async () => {
-      const llm = new FakeLlmService().queueResponse('Farme em Dungeon Z');
-      const handler = makeCommandHandler(llm);
-      const interaction = new FakeDiscordInteraction('farming', { target: 'Gem of Agility' });
-
-      await handler.handle(asInteraction(interaction));
-
-      expect(interaction.getReply()).toBe('Farme em Dungeon Z');
-    });
-  });
-
-  describe('/damage', () => {
-    it('returns answer from use case', async () => {
-      const llm = new FakeLlmService().queueResponse('Use habilidade A e combo B');
-      const handler = makeCommandHandler(llm);
-      const interaction = new FakeDiscordInteraction('damage', { character: 'Lire' });
-
-      await handler.handle(asInteraction(interaction));
-
-      expect(interaction.getReply()).toBe('Use habilidade A e combo B');
-    });
-  });
-
-  describe('/add-knowledge', () => {
-    it('confirms entry saved with tag count', async () => {
-      const llm = new FakeLlmService().queueResponse(
-        '{"sanitizedContent":"Elesis usa carta X","tags":["elesis","carta","equipment"]}',
-      );
-      const handler = makeCommandHandler(llm);
-      const interaction = new FakeDiscordInteraction('add-knowledge', {
-        content: 'Elesis usa carta X no slot principal',
-      });
-
-      await handler.handle(asInteraction(interaction));
-
-      expect(interaction.isDeferred()).toBe(true);
-      expect(interaction.getReply()).toContain('3 tags');
-      expect(interaction.getReply()).toContain('elesis');
-    });
-  });
-
-  describe('/session list', () => {
-    it('reports no sessions when user has none', async () => {
-      const llm = new FakeLlmService();
-      const handler = makeCommandHandler(llm);
-      const interaction = new FakeDiscordInteraction('session', {}, 'list');
-
-      await handler.handle(asInteraction(interaction));
-
-      expect(interaction.getReply()).toBe('Nenhuma sessão encontrada.');
-    });
-
-    it('lists sessions with bullet format when sessions exist', async () => {
-      const llm = new FakeLlmService().queueResponse('Resposta');
-      const handler = makeCommandHandler(llm);
-
-      // Create a session via /ask
-      const ask = new FakeDiscordInteraction('ask', { question: 'Qual o melhor mago?' });
-      await handler.handle(asInteraction(ask));
-
-      const list = new FakeDiscordInteraction('session', {}, 'list');
-      await handler.handle(asInteraction(list));
-
-      expect(list.getReply()).toContain('•');
-      expect(list.getReply()).toContain('`');
-    });
-  });
-
-  describe('/session delete', () => {
-    it('confirms deletion of a known session', async () => {
-      const llm = new FakeLlmService().queueResponse('Resposta');
-      const handler = makeCommandHandler(llm);
-
-      // Create session via /ask
-      const ask = new FakeDiscordInteraction('ask', { question: 'Teste' });
-      await handler.handle(asInteraction(ask));
-
-      // Get the session id via /session list
-      const list = new FakeDiscordInteraction('session', {}, 'list');
-      await handler.handle(asInteraction(list));
-      const replyText = list.getReply();
-      const match = replyText.match(/`([^`]+)`/);
-      const sessionId = match![1];
-
-      const del = new FakeDiscordInteraction('session', { session_id: sessionId }, 'delete');
-      await handler.handle(asInteraction(del));
-
-      expect(del.getReply()).toContain('deletada com sucesso');
-    });
-
-    it('returns error message for unknown session id', async () => {
-      const llm = new FakeLlmService();
-      const handler = makeCommandHandler(llm);
-      const interaction = new FakeDiscordInteraction(
-        'session',
-        { session_id: 'nonexistent-id' },
-        'delete',
-      );
-
-      await handler.handle(asInteraction(interaction));
-
-      expect(interaction.getReply()).toContain('not found');
-    });
-  });
-
-  describe('/session switch', () => {
-    it('activates an existing session', async () => {
-      const llm = new FakeLlmService().queueResponse('Resposta');
-      const handler = makeCommandHandler(llm);
-
-      // Create a session
-      const ask = new FakeDiscordInteraction('ask', { question: 'Teste switch' });
-      await handler.handle(asInteraction(ask));
-
-      const list = new FakeDiscordInteraction('session', {}, 'list');
-      await handler.handle(asInteraction(list));
-      const match = list.getReply().match(/`([^`]+)`/);
-      const sessionId = match![1];
-
-      const sw = new FakeDiscordInteraction('session', { session_id: sessionId }, 'switch');
-      await handler.handle(asInteraction(sw));
-
-      expect(sw.getReply()).toContain('ativada');
-    });
-  });
-
-  describe('/help', () => {
-    it('lists all available commands', async () => {
-      const llm = new FakeLlmService();
-      const handler = makeCommandHandler(llm);
-      const interaction = new FakeDiscordInteraction('help');
-
-      await handler.handle(asInteraction(interaction));
-
-      expect(interaction.isDeferred()).toBe(true);
-      expect(interaction.getReply()).toContain('/ask');
-      expect(interaction.getReply()).toContain('/wiki');
-      expect(interaction.getReply()).toContain('/web');
-      expect(interaction.getReply()).toContain('/equipment');
-      expect(interaction.getReply()).toContain('/session');
     });
   });
 

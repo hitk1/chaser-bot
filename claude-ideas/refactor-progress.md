@@ -104,4 +104,33 @@ Pass-through de `forceNewSession` e `existingSessionId` para `resolveActiveSessi
 
 ---
 
-## Próximo: Step 6 — Presentation: CommandHandler
+---
+
+## Step 6 — Presentation: CommandHandler ✅ (2026-04-23)
+
+### `src/presentation/discord/command-handler.ts` — reescrito
+- **`UseCases` interface** reduzida para: `searchWiki`, `searchWeb`, `handleReply`, `sessionRepository`
+- **Handlers map** reduzido para apenas `ask` e `wiki`
+- **`handleAsk`** (renomeado de `handleWeb`): chama `searchWeb`, captura `sentMsg` do `editReply` e chama `sessionRepository.linkDiscordMessageToSession` para registrar o Discord message ID
+- **`handleWiki`** inalterado em comportamento
+- **`handleReply`** (público): chamado pelo EventHandler para replies, retorna `string` pronto para enviar
+- **`splitIntoChunks`** exportada para reuso no EventHandler
+- Removidos: `handleAsk` (antigo), `handleEquipment`, `handleFarming`, `handleDamage`, `handleAddKnowledge`, `handleSession`, `handleHelp`, `HELP_TEXT`, `formatRelativeTime`
+
+### `src/presentation/discord/command-handler.spec.ts` — atualizado
+- `FakeDiscordInteraction.editReply()` agora retorna `Promise<{ id: string }>` (alinhado com Discord.js)
+- `makeCommandHandler` slimado para apenas os 4 use cases ativos
+- Removidos testes de: `/ask` antigo, `/equipment`, `/farming`, `/damage`, `/add-knowledge`, `/session`, `/help`
+- `/web` tests renomeados para `/ask`
+- Novo teste: "appends Links Relacionados section when search returns results"
+
+### `src/main.ts` — atualizado parcialmente
+- `CommandHandler` recebe a nova `UseCases` interface
+- `HandleReplyUseCase` instanciado e injetado
+- Use cases desativados mantidos com `void` expressions (limpeza completa no Step 9)
+
+**Resultado:** 23 suites, 134 testes passando.
+
+---
+
+## Próximo: Step 7 — Presentation: EventHandler + Discord Client

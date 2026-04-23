@@ -28,6 +28,7 @@ import { AddKnowledgeUseCase } from './application/use-cases/add-knowledge/add-k
 import { ListSessionsUseCase } from './application/use-cases/list-sessions/list-sessions.use-case';
 import { SwitchSessionUseCase } from './application/use-cases/switch-session/switch-session.use-case';
 import { DeleteSessionUseCase } from './application/use-cases/delete-session/delete-session.use-case';
+import { HandleReplyUseCase } from './application/use-cases/handle-reply/handle-reply.use-case';
 import { CommandHandler } from './presentation/discord/command-handler';
 import { EventHandler } from './presentation/discord/event-handler';
 import { askCommand } from './presentation/discord/commands/ask.command';
@@ -95,6 +96,7 @@ async function bootstrap() {
       createLogger('search-wiki'),
     );
     const searchWeb = new SearchWebUseCase(searchService, askQuestion, createLogger('search-web'));
+    // NOTE: disabled use cases (kept for future re-enablement, not wired to CommandHandler)
     const getEquipmentAdvice = new GetEquipmentAdviceUseCase(askQuestion);
     const getFarmingStrategy = new GetFarmingStrategyUseCase(askQuestion);
     const getDamageTips = new GetDamageTipsUseCase(askQuestion);
@@ -102,6 +104,10 @@ async function bootstrap() {
     const listSessions = new ListSessionsUseCase(userRepository, sessionRepository);
     const switchSession = new SwitchSessionUseCase(userRepository, sessionRepository);
     const deleteSession = new DeleteSessionUseCase(userRepository, sessionRepository);
+    void getEquipmentAdvice; void getFarmingStrategy; void getDamageTips;
+    void addKnowledge; void listSessions; void switchSession; void deleteSession;
+
+    const handleReply = new HandleReplyUseCase(sessionRepository, askQuestion, createLogger('handle-reply'));
 
     // 6. Build command config
     const commandConfig = {
@@ -116,16 +122,10 @@ async function bootstrap() {
     // 7. Create presentation layer
     const commandHandler = new CommandHandler(
       {
-        askQuestion,
         searchWiki,
         searchWeb,
-        getEquipmentAdvice,
-        getFarmingStrategy,
-        getDamageTips,
-        addKnowledge,
-        listSessions,
-        switchSession,
-        deleteSession,
+        handleReply,
+        sessionRepository,
       },
       commandConfig,
       createLogger('command-handler'),
