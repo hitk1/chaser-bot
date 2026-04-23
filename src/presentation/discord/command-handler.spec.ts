@@ -1,6 +1,8 @@
 import { ChatInputCommandInteraction } from 'discord.js';
 import { clearDatabase } from '../../test/db-helpers';
 import { FakeLlmService } from '../../test/fakes/fake-llm.service';
+import { FakeWikiSearchService } from '../../test/fakes/fake-wiki-search.service';
+import { FakeWebSearchService } from '../../test/fakes/fake-web-search.service';
 import {
   makeRepositories,
   defaultThrottle,
@@ -9,6 +11,8 @@ import {
 import { CheckThrottleUseCase } from '../../application/use-cases/check-throttle/check-throttle.use-case';
 import { ResolveActiveSessionUseCase } from '../../application/use-cases/resolve-active-session/resolve-active-session.use-case';
 import { AskQuestionUseCase } from '../../application/use-cases/ask-question/ask-question.use-case';
+import { SearchWikiUseCase } from '../../application/use-cases/search-wiki/search-wiki.use-case';
+import { SearchWebUseCase } from '../../application/use-cases/search-web/search-web.use-case';
 import { GetEquipmentAdviceUseCase } from '../../application/use-cases/get-equipment-advice/get-equipment-advice.use-case';
 import { GetFarmingStrategyUseCase } from '../../application/use-cases/get-farming-strategy/get-farming-strategy.use-case';
 import { GetDamageTipsUseCase } from '../../application/use-cases/get-damage-tips/get-damage-tips.use-case';
@@ -92,8 +96,8 @@ const nullLogger = pino({ level: 'silent' });
 
 function makeCommandHandler(
   llmService: FakeLlmService,
-  wikiLlmService?: FakeLlmService,
-  webLlmService?: FakeLlmService,
+  wikiSearch?: FakeWikiSearchService,
+  webSearch?: FakeWebSearchService | null,
 ): CommandHandler {
   const repos = makeRepositories();
   const checkThrottle = new CheckThrottleUseCase(repos.throttleRepository);
@@ -107,17 +111,11 @@ function makeCommandHandler(
     checkThrottle,
     llmService,
   );
-  const searchWiki = new AskQuestionUseCase(
-    repos.sessionRepository,
-    resolveActiveSession,
-    checkThrottle,
-    wikiLlmService ?? llmService,
-  );
-  const searchWeb = new AskQuestionUseCase(
-    repos.sessionRepository,
-    resolveActiveSession,
-    checkThrottle,
-    webLlmService ?? llmService,
+  const searchWiki = new SearchWikiUseCase(wikiSearch ?? new FakeWikiSearchService(), askQuestion, nullLogger);
+  const searchWeb = new SearchWebUseCase(
+    webSearch === undefined ? new FakeWebSearchService() : webSearch,
+    askQuestion,
+    nullLogger,
   );
   const getEquipmentAdvice = new GetEquipmentAdviceUseCase(askQuestion);
   const getFarmingStrategy = new GetFarmingStrategyUseCase(askQuestion);
@@ -200,8 +198,8 @@ describe('CommandHandler', () => {
 
   describe('/wiki', () => {
     it('defers first, then puts wiki LLM answer in editReply', async () => {
-      const wikiLlm = new FakeLlmService().queueResponse('Elesis é uma guerreira da classe Knight.');
-      const handler = makeCommandHandler(new FakeLlmService(), wikiLlm);
+      const llm = new FakeLlmService().queueResponse('Elesis é uma guerreira da classe Knight.');
+      const handler = makeCommandHandler(llm);
       const interaction = new FakeDiscordInteraction('wiki', { question: 'Quem é a Elesis?' });
 
       await handler.handle(asInteraction(interaction));
@@ -211,11 +209,11 @@ describe('CommandHandler', () => {
     });
 
     it('returns throttle warning when user is rate-limited on /wiki', async () => {
-      const wikiLlm = new FakeLlmService();
+      const llm = new FakeLlmService();
       for (let i = 0; i < defaultThrottle.maxRequests; i++) {
-        wikiLlm.queueResponse(`Resposta wiki ${i + 1}`);
+        llm.queueResponse(`Resposta wiki ${i + 1}`);
       }
-      const handler = makeCommandHandler(new FakeLlmService(), wikiLlm);
+      const handler = makeCommandHandler(llm);
 
       for (let i = 0; i < defaultThrottle.maxRequests; i++) {
         const req = new FakeDiscordInteraction('wiki', { question: `Pergunta ${i + 1}` });
@@ -228,22 +226,22 @@ describe('CommandHandler', () => {
       expect(throttled.getReply()).toContain('Tester');
     });
 
-    it('forwards WIKI_SYSTEM_PROMPT as the system message', async () => {
-      const wikiLlm = new FakeLlmService().queueResponse('Info da wiki');
-      const handler = makeCommandHandler(new FakeLlmService(), wikiLlm);
+    it('injects wiki-results section into the system message', async () => {
+      const llm = new FakeLlmService().queueResponse('Info da wiki');
+      const handler = makeCommandHandler(llm);
       const interaction = new FakeDiscordInteraction('wiki', { question: 'Quem é a Lire?' });
 
       await handler.handle(asInteraction(interaction));
 
-      const systemMsg = wikiLlm.lastMessages.find((m) => m.role === 'system');
-      expect(systemMsg?.content).toContain('grandchase_wiki');
+      const systemMsg = llm.lastMessages.find((m) => m.role === 'system');
+      expect(systemMsg?.content).toContain('<wiki-results>');
     });
   });
 
   describe('/web', () => {
     it('defers first, then puts web LLM answer in editReply', async () => {
-      const webLlm = new FakeLlmService().queueResponse('Resultados encontrados no Reddit.');
-      const handler = makeCommandHandler(new FakeLlmService(), undefined, webLlm);
+      const llm = new FakeLlmService().queueResponse('Resultados encontrados no Reddit.');
+      const handler = makeCommandHandler(llm);
       const interaction = new FakeDiscordInteraction('web', { question: 'Melhor build de Arme?' });
 
       await handler.handle(asInteraction(interaction));
@@ -253,11 +251,11 @@ describe('CommandHandler', () => {
     });
 
     it('returns throttle warning when user is rate-limited on /web', async () => {
-      const webLlm = new FakeLlmService();
+      const llm = new FakeLlmService();
       for (let i = 0; i < defaultThrottle.maxRequests; i++) {
-        webLlm.queueResponse(`Resposta web ${i + 1}`);
+        llm.queueResponse(`Resposta web ${i + 1}`);
       }
-      const handler = makeCommandHandler(new FakeLlmService(), undefined, webLlm);
+      const handler = makeCommandHandler(llm);
 
       for (let i = 0; i < defaultThrottle.maxRequests; i++) {
         const req = new FakeDiscordInteraction('web', { question: `Pergunta ${i + 1}` });
@@ -270,15 +268,15 @@ describe('CommandHandler', () => {
       expect(throttled.getReply()).toContain('Tester');
     });
 
-    it('forwards WEB_SEARCH_SYSTEM_PROMPT as the system message', async () => {
-      const webLlm = new FakeLlmService().queueResponse('Resultados da web');
-      const handler = makeCommandHandler(new FakeLlmService(), undefined, webLlm);
+    it('injects web-search-results section into the system message', async () => {
+      const llm = new FakeLlmService().queueResponse('Resultados da web');
+      const handler = makeCommandHandler(llm);
       const interaction = new FakeDiscordInteraction('web', { question: 'Meta atual?' });
 
       await handler.handle(asInteraction(interaction));
 
-      const systemMsg = webLlm.lastMessages.find((m) => m.role === 'system');
-      expect(systemMsg?.content).toContain('web_search');
+      const systemMsg = llm.lastMessages.find((m) => m.role === 'system');
+      expect(systemMsg?.content).toContain('<web-search-results>');
     });
   });
 

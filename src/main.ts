@@ -18,6 +18,9 @@ import { OpenAiLlmService } from './infrastructure/llm/openai-llm.service';
 import { CheckThrottleUseCase } from './application/use-cases/check-throttle/check-throttle.use-case';
 import { ResolveActiveSessionUseCase } from './application/use-cases/resolve-active-session/resolve-active-session.use-case';
 import { AskQuestionUseCase } from './application/use-cases/ask-question/ask-question.use-case';
+import { SearchWikiUseCase } from './application/use-cases/search-wiki/search-wiki.use-case';
+import { SearchWebUseCase } from './application/use-cases/search-web/search-web.use-case';
+import { GrandChaseWikiSearchService } from './infrastructure/search/grandchase-wiki-search.service';
 import { GetEquipmentAdviceUseCase } from './application/use-cases/get-equipment-advice/get-equipment-advice.use-case';
 import { GetFarmingStrategyUseCase } from './application/use-cases/get-farming-strategy/get-farming-strategy.use-case';
 import { GetDamageTipsUseCase } from './application/use-cases/get-damage-tips/get-damage-tips.use-case';
@@ -53,48 +56,26 @@ async function bootstrap() {
     const throttleRepository = new PrismaThrottleRepository(prisma);
     const knowledgeRepository = new PrismaKnowledgeRepository(prisma);
 
-    // 3. Build function registries
-    const searchService = config.SEARCH_API_KEY ? new BraveSearchService(config.SEARCH_API_KEY) : null;
+    // 3. Build function registry (general: all tools — used by /ask, /equipment, /farming, /damage)
+    const searchService = config.SEARCH_API_KEY
+      ? new BraveSearchService(config.SEARCH_API_KEY, createLogger('brave-search'))
+      : null;
 
-    // General registry: all tools — used by /ask, /equipment, /farming, /damage, /add-knowledge
     const registry = new FunctionRegistry();
     registry.register('grandchase_wiki', createGrandChaseWikiFunction());
     registry.register('knowledge_lookup', createKnowledgeLookupFunction(knowledgeRepository));
     if (searchService) {
       registry.register('web_search', createWebSearchFunction(searchService));
       logger.info('Web search function registered in general registry');
+    } else {
+      logger.warn('SEARCH_API_KEY not set — web search disabled');
     }
 
-    // Wiki registry: grandchase_wiki + knowledge_lookup only (no web_search)
-    const wikiRegistry = new FunctionRegistry();
-    wikiRegistry.register('grandchase_wiki', createGrandChaseWikiFunction());
-    wikiRegistry.register('knowledge_lookup', createKnowledgeLookupFunction(knowledgeRepository));
-
-    // Web registry: web_search + knowledge_lookup only (no grandchase_wiki)
-    const webRegistry = new FunctionRegistry();
-    webRegistry.register('knowledge_lookup', createKnowledgeLookupFunction(knowledgeRepository));
-    if (searchService) {
-      webRegistry.register('web_search', createWebSearchFunction(searchService));
-      logger.info('Web search function registered in web registry');
-    }
-
-    // 4. Create LLM services (shared OpenAI HTTP client, different registries)
+    // 4. Create LLM service
     const openai = createOpenAiClient(config);
     const llmService = new OpenAiLlmService(
       openai,
       registry,
-      config.OPENAI_MODEL,
-      config.OPENAI_MAX_TOKENS,
-    );
-    const wikiLlmService = new OpenAiLlmService(
-      openai,
-      wikiRegistry,
-      config.OPENAI_MODEL,
-      config.OPENAI_MAX_TOKENS,
-    );
-    const webLlmService = new OpenAiLlmService(
-      openai,
-      webRegistry,
       config.OPENAI_MODEL,
       config.OPENAI_MAX_TOKENS,
     );
@@ -108,18 +89,12 @@ async function bootstrap() {
       checkThrottle,
       llmService,
     );
-    const searchWiki = new AskQuestionUseCase(
-      sessionRepository,
-      resolveActiveSession,
-      checkThrottle,
-      wikiLlmService,
+    const searchWiki = new SearchWikiUseCase(
+      new GrandChaseWikiSearchService(createLogger('grandchase-wiki-search')),
+      askQuestion,
+      createLogger('search-wiki'),
     );
-    const searchWeb = new AskQuestionUseCase(
-      sessionRepository,
-      resolveActiveSession,
-      checkThrottle,
-      webLlmService,
-    );
+    const searchWeb = new SearchWebUseCase(searchService, askQuestion, createLogger('search-web'));
     const getEquipmentAdvice = new GetEquipmentAdviceUseCase(askQuestion);
     const getFarmingStrategy = new GetFarmingStrategyUseCase(askQuestion);
     const getDamageTips = new GetDamageTipsUseCase(askQuestion);

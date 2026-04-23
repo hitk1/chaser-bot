@@ -1,10 +1,12 @@
 import { ChatInputCommandInteraction } from 'discord.js';
 import { Logger } from 'pino';
-import { BASE_GRANDCHASE_SYSTEM_PROMPT, WIKI_SYSTEM_PROMPT, WEB_SEARCH_SYSTEM_PROMPT } from '../../application/constants/game-prompts';
+import { BASE_GRANDCHASE_SYSTEM_PROMPT } from '../../application/constants/game-prompts';
 import {
   ThrottleConfig,
 } from '../../application/use-cases/check-throttle/check-throttle.use-case';
 import { AskQuestionUseCase } from '../../application/use-cases/ask-question/ask-question.use-case';
+import { SearchWikiUseCase } from '../../application/use-cases/search-wiki/search-wiki.use-case';
+import { SearchWebUseCase } from '../../application/use-cases/search-web/search-web.use-case';
 import { GetEquipmentAdviceUseCase } from '../../application/use-cases/get-equipment-advice/get-equipment-advice.use-case';
 import { GetFarmingStrategyUseCase } from '../../application/use-cases/get-farming-strategy/get-farming-strategy.use-case';
 import { GetDamageTipsUseCase } from '../../application/use-cases/get-damage-tips/get-damage-tips.use-case';
@@ -20,8 +22,8 @@ export interface CommandConfig {
 
 export interface UseCases {
   askQuestion: AskQuestionUseCase;
-  searchWiki: AskQuestionUseCase;
-  searchWeb: AskQuestionUseCase;
+  searchWiki: SearchWikiUseCase;
+  searchWeb: SearchWebUseCase;
   getEquipmentAdvice: GetEquipmentAdviceUseCase;
   getFarmingStrategy: GetFarmingStrategyUseCase;
   getDamageTips: GetDamageTipsUseCase;
@@ -136,7 +138,6 @@ export class CommandHandler {
       channelId,
       username,
       question,
-      systemPrompt: WIKI_SYSTEM_PROMPT,
       throttle: this.commandConfig.throttle,
       sessionInactivityMinutes: this.commandConfig.sessionInactivityMinutes,
     });
@@ -154,7 +155,6 @@ export class CommandHandler {
       channelId,
       username,
       question,
-      systemPrompt: WEB_SEARCH_SYSTEM_PROMPT,
       throttle: this.commandConfig.throttle,
       sessionInactivityMinutes: this.commandConfig.sessionInactivityMinutes,
     });
