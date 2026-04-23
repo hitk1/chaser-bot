@@ -9,7 +9,7 @@ export function createLogger(component: string) {
     { level },
     isProduction
       ? undefined
-      : pino.transport({ target: 'pino-pretty', options: { colorize: true } }),
+      : pino.transport({ target: 'pino-pretty', options: { colorize: true , singleLine: true} }),
   );
 
   return logger.child({ component });
