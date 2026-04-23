@@ -8,6 +8,8 @@ export interface AskQuestionInput {
   systemPrompt: string;
   throttle: ThrottleConfig;
   sessionInactivityMinutes: number;
+  forceNewSession?: boolean;
+  existingSessionId?: string;
 }
 
 export interface AskQuestionOutput {

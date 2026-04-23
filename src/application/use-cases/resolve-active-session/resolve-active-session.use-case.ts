@@ -10,6 +10,8 @@ export interface ResolveActiveSessionInput {
   discordUserId: string;
   channelId: string;
   sessionInactivityMinutes: number;
+  forceNewSession?: boolean;
+  existingSessionId?: string;
 }
 
 export interface ResolveActiveSessionOutput {
@@ -25,11 +27,33 @@ export class ResolveActiveSessionUseCase {
   ) {}
 
   async execute(input: ResolveActiveSessionInput): Promise<ResolveActiveSessionOutput> {
-    const { discordUserId, channelId, sessionInactivityMinutes } = input;
+    const { discordUserId, channelId, sessionInactivityMinutes, forceNewSession, existingSessionId } = input;
 
-    logger.info({ discordUserId, channelId }, '[RESOLVE-SESSION][USE-CASE] Resolving active session');
+    logger.info({ discordUserId, channelId, forceNewSession, existingSessionId }, '[RESOLVE-SESSION][USE-CASE] Resolving active session');
 
     const user = await this.userRepository.findOrCreate(discordUserId);
+
+    if (existingSessionId) {
+      const existingSession = await this.sessionRepository.findById(existingSessionId);
+      if (!existingSession) {
+        throw new Error(`Session not found: ${existingSessionId}`);
+      }
+      logger.info(
+        { discordUserId, sessionId: existingSession.id, isNewSession: false },
+        '[RESOLVE-SESSION][USE-CASE] Session resolved (existing)',
+      );
+      return { session: existingSession, user, isNewSession: false };
+    }
+
+    if (forceNewSession) {
+      const newSession = await this.sessionRepository.create(user.id, channelId);
+      logger.info(
+        { discordUserId, sessionId: newSession.id, isNewSession: true },
+        '[RESOLVE-SESSION][USE-CASE] Session resolved (forced new)',
+      );
+      return { session: newSession, user, isNewSession: true };
+    }
+
     const latestSession = await this.sessionRepository.findLatestByUserAndChannel(
       user.id,
       channelId,

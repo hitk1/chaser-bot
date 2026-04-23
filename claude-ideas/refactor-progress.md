@@ -37,4 +37,26 @@ Adicionado `discordMessageId?: string` à interface `Message`.
 
 ---
 
-## Próximo: Step 3 — Use Cases: Session Resolution
+---
+
+## Step 3 — Use Cases: Session Resolution ✅ (2026-04-22)
+
+### 3.1 — `src/application/use-cases/ask-question/ask-question.dto.ts`
+Adicionados campos opcionais à interface `AskQuestionInput`:
+- `forceNewSession?: boolean` — força criação de nova sessão ignorando inatividade
+- `existingSessionId?: string` — pina uma sessão específica pelo ID (usado por replies)
+
+### 3.2 — `src/application/use-cases/resolve-active-session/resolve-active-session.use-case.ts`
+Adicionados campos ao `ResolveActiveSessionInput` e nova lógica com 3 caminhos:
+1. `existingSessionId` → `findById` (lança erro se não encontrar)
+2. `forceNewSession` → sempre `create()` (ignora inatividade)
+3. Sem flags → comportamento anterior (inactivity check)
+
+### 3.3 — `src/application/use-cases/ask-question/ask-question.use-case.ts`
+Pass-through de `forceNewSession` e `existingSessionId` para `resolveActiveSession.execute()`.
+
+**Resultado:** `npx tsc --noEmit` sem erros. `npm test` — 22 suites, 141 testes passando.
+
+---
+
+## Próximo: Step 4 — Use Case: SearchWeb + Links Relacionados

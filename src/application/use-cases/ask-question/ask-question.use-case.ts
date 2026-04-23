@@ -16,7 +16,7 @@ export class AskQuestionUseCase {
   ) {}
 
   async execute(input: AskQuestionInput): Promise<AskQuestionOutput> {
-    const { discordUserId, channelId, username, question, systemPrompt, throttle, sessionInactivityMinutes } =
+    const { discordUserId, channelId, username, question, systemPrompt, throttle, sessionInactivityMinutes, forceNewSession, existingSessionId } =
       input;
 
     logger.info({ discordUserId, username, channelId }, '[ASK-QUESTION][USE-CASE] Processing question');
@@ -25,6 +25,8 @@ export class AskQuestionUseCase {
       discordUserId,
       channelId,
       sessionInactivityMinutes,
+      forceNewSession,
+      existingSessionId,
     });
 
     const throttleResult = await this.checkThrottle.execute({
