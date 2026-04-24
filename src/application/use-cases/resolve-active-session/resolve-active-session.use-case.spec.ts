@@ -88,4 +88,70 @@ describe('ResolveActiveSessionUseCase', () => {
 
     expect(channelA.session.id).not.toBe(channelB.session.id);
   });
+
+  describe('forceNewSession', () => {
+    it('always creates a new session even when an active one exists', async () => {
+      const first = await resolveActiveSession.execute({
+        discordUserId: 'discord-force-user',
+        channelId: 'channel-1',
+        sessionInactivityMinutes: defaultSessionInactivityMinutes,
+      });
+
+      const second = await resolveActiveSession.execute({
+        discordUserId: 'discord-force-user',
+        channelId: 'channel-1',
+        sessionInactivityMinutes: defaultSessionInactivityMinutes,
+        forceNewSession: true,
+      });
+
+      expect(second.session.id).not.toBe(first.session.id);
+      expect(second.isNewSession).toBe(true);
+    });
+
+    it('creates multiple independent sessions for repeated calls', async () => {
+      const { sessionRepository } = makeRepositories();
+
+      for (let i = 0; i < 3; i++) {
+        await resolveActiveSession.execute({
+          discordUserId: 'discord-multi-session',
+          channelId: 'channel-1',
+          sessionInactivityMinutes: defaultSessionInactivityMinutes,
+          forceNewSession: true,
+        });
+      }
+
+      const user = await makeRepositories().userRepository.findOrCreate('discord-multi-session');
+      const sessions = await sessionRepository.findAllByUser(user.id);
+      expect(sessions).toHaveLength(3);
+    });
+  });
+
+  describe('existingSessionId', () => {
+    it('returns the specified session by ID', async () => {
+      const { sessionRepository } = makeRepositories();
+      const user = await makeRepositories().userRepository.findOrCreate('discord-existing-user');
+      const created = await sessionRepository.create(user.id, 'channel-1');
+
+      const output = await resolveActiveSession.execute({
+        discordUserId: 'discord-existing-user',
+        channelId: 'channel-1',
+        sessionInactivityMinutes: defaultSessionInactivityMinutes,
+        existingSessionId: created.id,
+      });
+
+      expect(output.session.id).toBe(created.id);
+      expect(output.isNewSession).toBe(false);
+    });
+
+    it('throws when existingSessionId points to a non-existent session', async () => {
+      await expect(
+        resolveActiveSession.execute({
+          discordUserId: 'discord-existing-user',
+          channelId: 'channel-1',
+          sessionInactivityMinutes: defaultSessionInactivityMinutes,
+          existingSessionId: 'non-existent-session-id',
+        }),
+      ).rejects.toThrow('non-existent-session-id');
+    });
+  });
 });

@@ -199,8 +199,35 @@ Descrição mantida como estava (`Faça uma pergunta sobre GrandChase`) — a bu
 
 ---
 
-## Step 10 — Testes adicionais (pendente)
+---
+
+## Step 10 — Testes adicionais ✅ (2026-04-23)
 
 ### Nota: /help mantido (decisão pós-planejamento)
 `/help` foi mantido ativo com `HELP_TEXT` atualizado listando apenas `/ask`, `/wiki` e `/help`.
+
+### `resolve-active-session.use-case.spec.ts` (+5 testes)
+- `forceNewSession: true` sempre cria nova sessão mesmo com sessão ativa existente
+- Múltiplas chamadas com `forceNewSession` geram sessões independentes
+- `existingSessionId` retorna a sessão específica pelo ID
+- `existingSessionId` para ID inexistente lança erro
+
+### `search-web.use-case.spec.ts` (+4 testes)
+- Resposta contém `## Links Relacionados` quando resultados web existem
+- Resposta NÃO contém a seção quando busca retorna vazio
+- Resposta NÃO contém a seção quando throttled
+- Cada `execute()` cria uma sessão nova (sessionIds diferentes)
+
+### `prisma-session.repository.spec.ts` (+6 testes)
+- `findByDiscordMessageId`: retorna null quando não encontrado
+- `findByDiscordMessageId`: retorna sessão completa quando message ID existe
+- `findByDiscordMessageId`: não retorna sessão de outro ID
+- `linkDiscordMessageToSession`: linka a última mensagem assistant sem link
+- `linkDiscordMessageToSession`: não lança erro quando não há assistant sem link
+- `linkDiscordMessageToSession`: linka apenas a mais recente quando há múltiplas
+
+### `command-handler.spec.ts` (+1 teste)
+- `/help` lista apenas os comandos ativos (`/ask`, `/wiki`, `/help`) e não os desativados
+
+**Resultado final:** 23 suites, 149 testes passando.
 

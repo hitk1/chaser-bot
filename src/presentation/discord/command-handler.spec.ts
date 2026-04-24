@@ -248,6 +248,24 @@ describe('CommandHandler', () => {
     });
   });
 
+  describe('/help', () => {
+    it('lists only active commands', async () => {
+      const llm = new FakeLlmService();
+      const handler = makeCommandHandler(llm);
+      const interaction = new FakeDiscordInteraction('help');
+
+      await handler.handle(asInteraction(interaction));
+
+      expect(interaction.isDeferred()).toBe(true);
+      expect(interaction.getReply()).toContain('/ask');
+      expect(interaction.getReply()).toContain('/wiki');
+      expect(interaction.getReply()).toContain('/help');
+      expect(interaction.getReply()).not.toContain('/equipment');
+      expect(interaction.getReply()).not.toContain('/farming');
+      expect(interaction.getReply()).not.toContain('/session');
+    });
+  });
+
   describe('long message chunking', () => {
     it('sends first 2000 chars via editReply and remainder via followUp', async () => {
       const longAnswer = 'A'.repeat(1500) + '\n' + 'B'.repeat(1500);

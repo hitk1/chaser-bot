@@ -118,6 +118,71 @@ describe('PrismaSessionRepository', () => {
     });
   });
 
+  describe('findByDiscordMessageId', () => {
+    it('returns null when no message has that Discord message ID', async () => {
+      const result = await sessionRepo.findByDiscordMessageId('nonexistent-discord-id');
+      expect(result).toBeNull();
+    });
+
+    it('returns the full session when a message has that Discord message ID', async () => {
+      const session = await sessionRepo.create(userId, 'channel-1');
+      await sessionRepo.appendMessage(session.id, 'assistant', 'Resposta do bot', undefined, 'discord-msg-123');
+
+      const found = await sessionRepo.findByDiscordMessageId('discord-msg-123');
+      expect(found).not.toBeNull();
+      expect(found!.id).toBe(session.id);
+      expect(found!.messages).toHaveLength(1);
+    });
+
+    it('does not return sessions linked to a different Discord message ID', async () => {
+      const session = await sessionRepo.create(userId, 'channel-1');
+      await sessionRepo.appendMessage(session.id, 'assistant', 'Resposta', undefined, 'discord-msg-abc');
+
+      const result = await sessionRepo.findByDiscordMessageId('discord-msg-xyz');
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('linkDiscordMessageToSession', () => {
+    it('links the most recent unlinked assistant message to the Discord message ID', async () => {
+      const session = await sessionRepo.create(userId, 'channel-1');
+      await sessionRepo.appendMessage(session.id, 'user', 'Pergunta do usuário');
+      await sessionRepo.appendMessage(session.id, 'assistant', 'Resposta do bot');
+
+      await sessionRepo.linkDiscordMessageToSession(session.id, 'discord-msg-linked');
+
+      const found = await sessionRepo.findByDiscordMessageId('discord-msg-linked');
+      expect(found).not.toBeNull();
+      expect(found!.id).toBe(session.id);
+    });
+
+    it('does nothing when no unlinked assistant message exists', async () => {
+      const session = await sessionRepo.create(userId, 'channel-1');
+      await sessionRepo.appendMessage(session.id, 'assistant', 'Já linkada', undefined, 'existing-id');
+
+      await expect(
+        sessionRepo.linkDiscordMessageToSession(session.id, 'new-discord-id'),
+      ).resolves.not.toThrow();
+
+      const result = await sessionRepo.findByDiscordMessageId('new-discord-id');
+      expect(result).toBeNull();
+    });
+
+    it('links only the latest assistant message when multiple exist', async () => {
+      const session = await sessionRepo.create(userId, 'channel-1');
+      await sessionRepo.appendMessage(session.id, 'assistant', 'Primeira resposta', undefined, 'already-linked');
+      await sessionRepo.appendMessage(session.id, 'assistant', 'Segunda resposta');
+
+      await sessionRepo.linkDiscordMessageToSession(session.id, 'discord-msg-latest');
+
+      const found = await sessionRepo.findByDiscordMessageId('discord-msg-latest');
+      expect(found).not.toBeNull();
+      // The first one must remain linked to its original ID
+      const foundFirst = await sessionRepo.findByDiscordMessageId('already-linked');
+      expect(foundFirst).not.toBeNull();
+    });
+  });
+
   describe('delete', () => {
     it('removes the session', async () => {
       const session = await sessionRepo.create(userId, 'channel-1');

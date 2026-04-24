@@ -104,6 +104,64 @@ describe('SearchWebUseCase', () => {
     expect(userMessage.content).toBe('como farmar moedas?');
   });
 
+  it('appends Links Relacionados section when results are found', async () => {
+    webSearch.setResults([
+      { title: 'Reddit Build', snippet: 'Dica de build', url: 'https://reddit.com/r/Grandchase/1' },
+      { title: 'Wiki Elesis', snippet: 'Info da wiki', url: 'https://grandchase.fandom.com/elesis' },
+    ]);
+    llmService.queueResponse('Resposta do LLM.');
+    const { useCase } = makeSearchWebUseCase(llmService, webSearch);
+
+    const output = await useCase.execute({ ...defaultInput, question: 'build Elesis?' });
+
+    expect(output.answer).toContain('## Links Relacionados');
+    expect(output.answer).toContain('https://reddit.com/r/Grandchase/1');
+    expect(output.answer).toContain('https://grandchase.fandom.com/elesis');
+  });
+
+  it('does not append Links Relacionados when search returns empty', async () => {
+    webSearch.setResults([]);
+    llmService.queueResponse('Resposta sem links.');
+    const { useCase } = makeSearchWebUseCase(llmService, webSearch);
+
+    const output = await useCase.execute({ ...defaultInput, question: 'pergunta' });
+
+    expect(output.answer).not.toContain('## Links Relacionados');
+  });
+
+  it('does not append Links Relacionados when throttled', async () => {
+    const throttledInput = {
+      ...defaultInput,
+      throttle: { maxRequests: 1, windowSeconds: 60, warningMessageTemplate: 'Calma, {username}!' },
+    };
+    webSearch.setResults([
+      { title: 'Algum Site', snippet: 'snippet', url: 'https://example.com' },
+    ]);
+    llmService.queueResponse('primeira resposta');
+    const { useCase } = makeSearchWebUseCase(llmService, webSearch);
+
+    await useCase.execute({ ...throttledInput, question: 'q1' });
+    const blocked = await useCase.execute({ ...throttledInput, question: 'q2' });
+
+    expect(blocked.warningMessage).toBeDefined();
+    expect(blocked.answer).not.toContain('## Links Relacionados');
+  });
+
+  it('creates a new session for each execute call', async () => {
+    webSearch.setResults([]);
+    llmService.queueResponse('r1');
+    llmService.queueResponse('r2');
+    llmService.queueResponse('r3');
+    const { useCase } = makeSearchWebUseCase(llmService, webSearch);
+
+    const o1 = await useCase.execute({ ...defaultInput, question: 'q1' });
+    const o2 = await useCase.execute({ ...defaultInput, question: 'q2' });
+    const o3 = await useCase.execute({ ...defaultInput, question: 'q3' });
+
+    expect(o1.sessionId).not.toBe(o2.sessionId);
+    expect(o2.sessionId).not.toBe(o3.sessionId);
+  });
+
   it('returns warning message and no answer when throttled', async () => {
     const throttledInput = {
       ...defaultInput,
