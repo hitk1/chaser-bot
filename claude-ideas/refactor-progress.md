@@ -165,4 +165,17 @@ Adicionado `commandConfig` ao construtor de `EventHandler`.
 
 ---
 
-## Próximo: Step 8 — Commands: ask.command.ts
+---
+
+## Step 8 — Commands: ask.command.ts ✅ (2026-04-23)
+
+### `src/presentation/discord/commands/ask.command.ts`
+Descrição mantida como estava (`Faça uma pergunta sobre GrandChase`) — a busca web é um detalhe de implementação, transparente ao usuário.
+
+`web.command.ts` mantido no disco mas não registrado no Discord (Step 9 limpa o `main.ts`).
+
+**Resultado:** 23 suites, 134 testes passando.
+
+---
+
+## Próximo: Step 9 — DI em main.ts
