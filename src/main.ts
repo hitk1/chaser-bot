@@ -139,8 +139,8 @@ async function bootstrap() {
 
     process.once('SIGINT', shutdown);
     process.once('SIGTERM', shutdown);
-  } catch (error) {
-    logger.error({ error }, 'Failed to start application');
+  } catch (error: any)  {
+    logger.error({ message: error.message }, 'Failed to start application');
     process.exit(1);
   }
 }
