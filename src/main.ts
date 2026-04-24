@@ -161,6 +161,7 @@ async function bootstrap() {
       commandHandler,
       createLogger('event-handler'),
       registrar,
+      commandConfig,
     );
     eventHandler.register();
 

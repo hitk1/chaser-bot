@@ -5,7 +5,7 @@ import { ThrottleConfig } from '../../application/use-cases/check-throttle/check
 import { SearchWikiUseCase } from '../../application/use-cases/search-wiki/search-wiki.use-case';
 import { SearchWebUseCase } from '../../application/use-cases/search-web/search-web.use-case';
 import { HandleReplyUseCase } from '../../application/use-cases/handle-reply/handle-reply.use-case';
-import { HandleReplyInput } from '../../application/use-cases/handle-reply/handle-reply.dto';
+import { HandleReplyInput, HandleReplyOutput } from '../../application/use-cases/handle-reply/handle-reply.dto';
 
 export interface CommandConfig {
   throttle: ThrottleConfig;
@@ -120,9 +120,12 @@ export class CommandHandler {
     await this.sendReply(interaction, output.warningMessage ?? output.answer);
   }
 
-  public async handleReply(input: HandleReplyInput): Promise<string> {
-    const output = await this.useCases.handleReply.execute(input);
-    return output.warningMessage ?? output.answer;
+  public async handleReply(input: HandleReplyInput): Promise<HandleReplyOutput> {
+    return this.useCases.handleReply.execute(input);
+  }
+
+  public async linkMessageToSession(sessionId: string, discordMessageId: string): Promise<void> {
+    await this.useCases.sessionRepository.linkDiscordMessageToSession(sessionId, discordMessageId);
   }
 
   private async sendReply(

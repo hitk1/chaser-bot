@@ -1,6 +1,8 @@
 import { Client } from 'discord.js';
 import { Logger } from 'pino';
-import { CommandHandler } from './command-handler';
+import { CommandHandler, CommandConfig, splitIntoChunks } from './command-handler';
+
+const MAX_MESSAGE_LENGTH = 2000;
 
 export interface CommandRegistrar {
   registerForGuild(guildId: string): Promise<void>;
@@ -12,6 +14,7 @@ export class EventHandler {
     private readonly commandHandler: CommandHandler,
     private readonly logger: Logger,
     private readonly registrar: CommandRegistrar,
+    private readonly commandConfig: CommandConfig,
   ) {}
 
   register(): void {
@@ -42,6 +45,67 @@ export class EventHandler {
     this.client.on('interactionCreate', async (interaction) => {
       if (!interaction.isChatInputCommand()) return;
       await this.commandHandler.handle(interaction);
+    });
+
+    this.client.on('messageCreate', async (message) => {
+      // Ignore bots (including ourselves)
+      if (message.author.bot) return;
+
+      // Only handle replies to other messages
+      if (!message.reference?.messageId) return;
+
+      const repliedToMessageId = message.reference.messageId;
+
+      // Confirm the replied-to message belongs to this bot
+      const repliedTo = await message.channel.messages
+        .fetch(repliedToMessageId)
+        .catch(() => null);
+
+      if (!repliedTo || repliedTo.author.id !== this.client.user?.id) return;
+
+      this.logger.info(
+        {
+          userId: message.author.id,
+          username: message.author.username,
+          channelId: message.channelId,
+          repliedToMessageId,
+        },
+        '[EVENT IN] User replied to bot message',
+      );
+
+      try {
+        const output = await this.commandHandler.handleReply({
+          discordUserId: message.author.id,
+          username: message.author.username,
+          channelId: message.channelId,
+          question: message.content,
+          repliedToMessageId,
+          throttle: this.commandConfig.throttle,
+          sessionInactivityMinutes: this.commandConfig.sessionInactivityMinutes,
+        });
+
+        const text = output.warningMessage ?? output.answer;
+        const chunks = splitIntoChunks(text, MAX_MESSAGE_LENGTH);
+
+        const sentMsg = await message.reply(chunks[0]);
+
+        // Link the new bot message ID so the chain can continue with further replies
+        if (!output.warningMessage && output.sessionId && sentMsg) {
+          await this.commandHandler.linkMessageToSession(output.sessionId, sentMsg.id);
+        }
+
+        for (const chunk of chunks.slice(1)) {
+          await message.channel.send(chunk);
+        }
+
+        this.logger.info(
+          { userId: message.author.id, sessionId: output.sessionId },
+          '[EVENT OUT] Reply sent to user',
+        );
+      } catch (error) {
+        this.logger.error({ error, userId: message.author.id }, 'Reply handler error');
+        await message.reply('Ocorreu um erro inesperado. Tente novamente.').catch(() => null);
+      }
     });
   }
 }

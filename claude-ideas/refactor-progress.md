@@ -133,4 +133,36 @@ Pass-through de `forceNewSession` e `existingSessionId` para `resolveActiveSessi
 
 ---
 
-## Próximo: Step 7 — Presentation: EventHandler + Discord Client
+---
+
+## Step 7 — Presentation: EventHandler + Discord Client ✅ (2026-04-23)
+
+### `src/bootstrap/discord-client.ts`
+Adicionados dois intents necessários para leitura de mensagens:
+- `GatewayIntentBits.GuildMessages`
+- `GatewayIntentBits.MessageContent`
+
+> **Requisito de deploy:** habilitar "Message Content Intent" no Discord Developer Portal.
+
+### `src/presentation/discord/command-handler.ts` (ajustes complementares)
+- `handleReply` agora retorna `HandleReplyOutput` (com `sessionId`) em vez de `string`
+- Adicionado método público `linkMessageToSession(sessionId, discordMessageId)` que delega para `sessionRepository`
+
+### `src/presentation/discord/event-handler.ts` — reescrito
+- Novo parâmetro no constructor: `commandConfig: CommandConfig`
+- Novo listener `messageCreate`:
+  1. Ignora mensagens de bots
+  2. Verifica se é reply (`message.reference?.messageId`)
+  3. Busca a mensagem respondida e confirma que é do bot
+  4. Chama `commandHandler.handleReply(...)` com os dados do usuário
+  5. Envia a resposta via `message.reply()` e chama `commandHandler.linkMessageToSession()` para encadear o próximo reply
+  6. Trata erros com resposta genérica
+
+### `src/main.ts`
+Adicionado `commandConfig` ao construtor de `EventHandler`.
+
+**Resultado:** 23 suites, 134 testes passando.
+
+---
+
+## Próximo: Step 8 — Commands: ask.command.ts
