@@ -21,6 +21,12 @@ export interface UseCases {
 
 const MAX_MESSAGE_LENGTH = 2000;
 
+const HELP_TEXT = `**Comandos disponíveis:**
+
+\`/ask question\` — Faça uma pergunta sobre GrandChase
+\`/wiki question\` — Pesquisa informações diretamente na wiki do GrandChase
+\`/help\` — Mostrar esta mensagem`;
+
 export function splitIntoChunks(text: string, maxLength: number): string[] {
   const chunks: string[] = [];
   let remaining = text;
@@ -47,6 +53,7 @@ export class CommandHandler {
     const handlers: Record<string, () => Promise<void>> = {
       ask: () => this.handleAsk(interaction),
       wiki: () => this.handleWiki(interaction),
+      help: () => this.handleHelp(interaction),
     };
 
     const handler = handlers[interaction.commandName];
@@ -118,6 +125,10 @@ export class CommandHandler {
     });
 
     await this.sendReply(interaction, output.warningMessage ?? output.answer);
+  }
+
+  private async handleHelp(interaction: ChatInputCommandInteraction): Promise<void> {
+    await this.sendReply(interaction, HELP_TEXT);
   }
 
   public async handleReply(input: HandleReplyInput): Promise<HandleReplyOutput> {

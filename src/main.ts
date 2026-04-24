@@ -20,26 +20,13 @@ import { ResolveActiveSessionUseCase } from './application/use-cases/resolve-act
 import { AskQuestionUseCase } from './application/use-cases/ask-question/ask-question.use-case';
 import { SearchWikiUseCase } from './application/use-cases/search-wiki/search-wiki.use-case';
 import { SearchWebUseCase } from './application/use-cases/search-web/search-web.use-case';
-import { GrandChaseWikiSearchService } from './infrastructure/search/grandchase-wiki-search.service';
-import { GetEquipmentAdviceUseCase } from './application/use-cases/get-equipment-advice/get-equipment-advice.use-case';
-import { GetFarmingStrategyUseCase } from './application/use-cases/get-farming-strategy/get-farming-strategy.use-case';
-import { GetDamageTipsUseCase } from './application/use-cases/get-damage-tips/get-damage-tips.use-case';
-import { AddKnowledgeUseCase } from './application/use-cases/add-knowledge/add-knowledge.use-case';
-import { ListSessionsUseCase } from './application/use-cases/list-sessions/list-sessions.use-case';
-import { SwitchSessionUseCase } from './application/use-cases/switch-session/switch-session.use-case';
-import { DeleteSessionUseCase } from './application/use-cases/delete-session/delete-session.use-case';
 import { HandleReplyUseCase } from './application/use-cases/handle-reply/handle-reply.use-case';
+import { GrandChaseWikiSearchService } from './infrastructure/search/grandchase-wiki-search.service';
 import { CommandHandler } from './presentation/discord/command-handler';
 import { EventHandler } from './presentation/discord/event-handler';
 import { askCommand } from './presentation/discord/commands/ask.command';
-import { equipmentCommand } from './presentation/discord/commands/equipment.command';
-import { farmingCommand } from './presentation/discord/commands/farming.command';
-import { damageCommand } from './presentation/discord/commands/damage.command';
-import { addKnowledgeCommand } from './presentation/discord/commands/add-knowledge.command';
-import { sessionCommand } from './presentation/discord/commands/session.command';
-import { helpCommand } from './presentation/discord/commands/help.command';
 import { wikiCommand } from './presentation/discord/commands/wiki.command';
-import { webCommand } from './presentation/discord/commands/web.command';
+import { helpCommand } from './presentation/discord/commands/help.command';
 
 const logger = createLogger('main');
 
@@ -57,7 +44,7 @@ async function bootstrap() {
     const throttleRepository = new PrismaThrottleRepository(prisma);
     const knowledgeRepository = new PrismaKnowledgeRepository(prisma);
 
-    // 3. Build function registry (general: all tools — used by /ask, /equipment, /farming, /damage)
+    // 3. Build function registry (tools available to the LLM during /ask and /wiki)
     const searchService = config.SEARCH_API_KEY
       ? new BraveSearchService(config.SEARCH_API_KEY, createLogger('brave-search'))
       : null;
@@ -67,7 +54,7 @@ async function bootstrap() {
     registry.register('knowledge_lookup', createKnowledgeLookupFunction(knowledgeRepository));
     if (searchService) {
       registry.register('web_search', createWebSearchFunction(searchService));
-      logger.info('Web search function registered in general registry');
+      logger.info('Web search function registered in registry');
     } else {
       logger.warn('SEARCH_API_KEY not set — web search disabled');
     }
@@ -96,17 +83,6 @@ async function bootstrap() {
       createLogger('search-wiki'),
     );
     const searchWeb = new SearchWebUseCase(searchService, askQuestion, createLogger('search-web'));
-    // NOTE: disabled use cases (kept for future re-enablement, not wired to CommandHandler)
-    const getEquipmentAdvice = new GetEquipmentAdviceUseCase(askQuestion);
-    const getFarmingStrategy = new GetFarmingStrategyUseCase(askQuestion);
-    const getDamageTips = new GetDamageTipsUseCase(askQuestion);
-    const addKnowledge = new AddKnowledgeUseCase(knowledgeRepository, llmService);
-    const listSessions = new ListSessionsUseCase(userRepository, sessionRepository);
-    const switchSession = new SwitchSessionUseCase(userRepository, sessionRepository);
-    const deleteSession = new DeleteSessionUseCase(userRepository, sessionRepository);
-    void getEquipmentAdvice; void getFarmingStrategy; void getDamageTips;
-    void addKnowledge; void listSessions; void switchSession; void deleteSession;
-
     const handleReply = new HandleReplyUseCase(sessionRepository, askQuestion, createLogger('handle-reply'));
 
     // 6. Build command config
@@ -121,28 +97,13 @@ async function bootstrap() {
 
     // 7. Create presentation layer
     const commandHandler = new CommandHandler(
-      {
-        searchWiki,
-        searchWeb,
-        handleReply,
-        sessionRepository,
-      },
+      { searchWiki, searchWeb, handleReply, sessionRepository },
       commandConfig,
       createLogger('command-handler'),
     );
 
     // 8. Build command registrar — registers slash commands to a guild on demand
-    const commandBodies = [
-      askCommand,
-      wikiCommand,
-      webCommand,
-      equipmentCommand,
-      farmingCommand,
-      damageCommand,
-      addKnowledgeCommand,
-      sessionCommand,
-      helpCommand,
-    ].map((c) => c.toJSON());
+    const commandBodies = [askCommand, wikiCommand, helpCommand].map((c) => c.toJSON());
 
     const rest = new REST().setToken(config.DISCORD_BOT_TOKEN);
     const registrar = {

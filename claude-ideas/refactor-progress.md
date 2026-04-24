@@ -178,4 +178,29 @@ Descrição mantida como estava (`Faça uma pergunta sobre GrandChase`) — a bu
 
 ---
 
-## Próximo: Step 9 — DI em main.ts
+---
+
+## Step 9 — DI em main.ts ✅ (2026-04-23)
+
+### `src/main.ts` — limpeza completa do composition root
+
+**Imports removidos:**
+- `GetEquipmentAdviceUseCase`, `GetFarmingStrategyUseCase`, `GetDamageTipsUseCase`
+- `AddKnowledgeUseCase`, `ListSessionsUseCase`, `SwitchSessionUseCase`, `DeleteSessionUseCase`
+- `equipmentCommand`, `farmingCommand`, `damageCommand`, `addKnowledgeCommand`, `sessionCommand`, `helpCommand`, `webCommand`
+
+**Instanciações removidas:** todos os use cases acima + `void` expressions temporárias
+
+**`commandBodies`:** reduzido para `[askCommand, wikiCommand]`
+
+**Mantidos:** `knowledgeRepository` (usado no function registry), `createKnowledgeLookupFunction`, toda a infra de LLM e busca web.
+
+**Resultado:** 23 suites, 134 testes passando.
+
+---
+
+## Step 10 — Testes adicionais (pendente)
+
+### Nota: /help mantido (decisão pós-planejamento)
+`/help` foi mantido ativo com `HELP_TEXT` atualizado listando apenas `/ask`, `/wiki` e `/help`.
+
